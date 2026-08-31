@@ -31,11 +31,16 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import os
 import re
 import sys
 import unicodedata
 from collections import defaultdict
 from pathlib import Path
+
+# 复用 wiki_lib 的 vault 配置解析（命令行 > 环境变量 > 配置文件 > 交互询问）
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import wiki_lib  # noqa: E402
 
 # ────────────────────────────────────────────────────────────────────────────
 # 常量
@@ -335,7 +340,8 @@ def main(argv=None) -> int:
             pass
     p = argparse.ArgumentParser(
         description="Light-weight BM25 + link-graph search over a markdown wiki folder.")
-    p.add_argument("wiki_dir", help="markdown wiki folder")
+    p.add_argument("wiki_dir", nargs="?", default=None,
+                   help="markdown wiki folder; omit to use LIGHTWEIGHT_WIKI_VAULT/config.json's vault/wiki")
     p.add_argument("query", nargs="?", help="search text")
     p.add_argument("--top", type=int, default=10, help="max results (default 10)")
     p.add_argument("--no-links", action="store_true", help="skip inbound/outbound")
@@ -346,9 +352,15 @@ def main(argv=None) -> int:
                    help="echo index.md + hot.md + log.md (read-order orientation)")
     args = p.parse_args(argv)
 
-    root = Path(args.wiki_dir)
-    if not root.is_dir():
-        print(json.dumps({"error": f"wiki_dir is not a directory: {root}"},
+    root = Path(args.wiki_dir) if args.wiki_dir else None
+    if root is None:
+        # 从配置的 vault 推导 vault/wiki；无则交互询问 vault 后取 wiki/ 子目录
+        vp = wiki_lib.ensure_vault_path(None, require_wiki=True)
+        root = (vp / "wiki") if vp else None
+    if root is None or not root.is_dir():
+        print(json.dumps({"error": f"wiki_dir is not a directory: {root} "
+                                    "(pass it, set LIGHTWEIGHT_WIKI_VAULT, "
+                                    "or run light-weight-wiki-config.py --vault <path>)"},
                          ensure_ascii=False), file=sys.stderr)
         return 2
 

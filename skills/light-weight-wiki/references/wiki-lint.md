@@ -51,7 +51,7 @@ python3 "$LINT" "<vault>" --report # 额外写 <vault>/wiki/meta/Lint Report <�
 
 ## 边界
 
-- 不要**批量重命名**页面；改名/合并要逐页和用户确认（脚本里没有 rename 工具，改名请用文件工具并同步修 index/引用）。
+- 不要**批量重命名**页面；改名/合并要逐页和用户确认。改名用 `../scripts/wiki-rename.py`（默认自动同步全库 `[[旧名]]` 引用，`--no-sync-refs` 关闭）。
 - `--report` 写的 `Lint Report <日期>.md` 是**机器页**，不参与检索、不算内容页。
 
 ## 完成标准

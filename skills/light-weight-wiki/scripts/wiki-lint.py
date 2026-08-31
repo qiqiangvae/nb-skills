@@ -57,11 +57,17 @@ def main(argv=None) -> int:
         except (AttributeError, ValueError):
             pass
     p = argparse.ArgumentParser(description="Health-check the lightweight wiki vault.")
-    p.add_argument("vault")
+    p.add_argument("vault", nargs="?", default=None,
+                   help="vault root; omit to use LIGHTWEIGHT_WIKI_VAULT / config.json")
     p.add_argument("--report", action="store_true")
     args = p.parse_args(argv)
 
-    vault = Path(args.vault)
+    vault = lib.ensure_vault_path(args.vault, require_wiki=True)
+    if vault is None:
+        print(json.dumps({"error": "no vault path: pass it, set LIGHTWEIGHT_WIKI_VAULT, "
+                                    "or run light-weight-wiki-config.py --vault <path>"},
+                         ensure_ascii=False), file=sys.stderr)
+        return 2
     l = lib.layout(vault)
     wiki_dir = l["wiki"]
     if not wiki_dir.is_dir():
@@ -88,6 +94,28 @@ def main(argv=None) -> int:
 
     titles = set(title_count.keys())
     by_lower = {t.lower(): t for t in titles}
+
+    # 分区索引页（_index.md）不是内容页，但其标题是可链接目标：
+    # 内容页里 [[Projects Index]]、[[_index]] 指向它们是合法引用，不算死链。
+    for p in lib.walk_md(wiki_dir, include_index=True):
+        if not lib.is_index_page(p.stem):
+            continue
+        fm, _ = lib.parse_frontmatter(lib.read_utf8(p))
+        for cand in (fm.get("title"), p.stem):
+            if cand and cand.lower() not in by_lower:
+                by_lower[cand.lower()] = cand
+
+    # 机器页（index/log/hot/readme）也可被正文引用（如 [[index]]、[[Hot Cache]]），
+    # 用其 basename 与 frontmatter title 一起作为已知目标，不算死链。
+    for m in ("index", "log", "hot", "readme"):
+        p = wiki_dir / f"{m}.md"
+        if p.is_file():
+            fm, _ = lib.parse_frontmatter(lib.read_utf8(p))
+            for cand in (m, fm.get("title")):
+                if cand and cand.lower() not in by_lower:
+                    by_lower[cand.lower()] = cand
+        elif m not in by_lower:
+            by_lower[m] = m
 
     inbound = defaultdict(set)
     for p in lib.walk_md(wiki_dir):

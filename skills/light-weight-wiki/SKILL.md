@@ -1,6 +1,6 @@
 ---
 name: light-weight-wiki
-description: 把一个 Markdown 文件夹建成并维护成可检索的个人/项目知识库（LLM Wiki），并附带配套的网页提净、存洞察、推理循环与 Obsidian 文件格式参考。一个入口 SKILL 分派到 references/ 下按原名保留的分册（wiki/wiki-ingest/wiki-lint/wiki-query/defuddle/save/think/obsidian-markdown/json-canvas/obsidian-bases/obsidian-cli），零依赖 Python 脚本在 scripts/。当用户想沉淀知识、把来源/笔记/对话整理进知识库、建库、检索并带引用、体检知识库，或把内容做成 canvas/bases 视图时使用。跨 agent 通用（不绑定 DSH）。
+description: 把一组 Markdown 文件维护成可由 Agent 建、写、查、检的轻量知识库（LLM Wiki），零第三方依赖的 Python 脚本负责记账（frontmatter、index/log、来源去重）。当用户要沉淀知识、把来源/笔记/对话写进知识库、新建或更新一页、检索知识库并带引用、体检知识库（死链/孤儿/失效索引）、把网页提取成干净正文，或生成 .canvas 脑图 / .base 表格视图时使用。
 ---
 
 # Light-Weight Wiki（轻量 LLM Wiki 工具链）
@@ -39,10 +39,31 @@ description: 把一个 Markdown 文件夹建成并维护成可检索的个人/�
    WRITE="$SKILL_DIR/scripts/wiki-write.py"
    SEARCH="$SKILL_DIR/scripts/wiki-search.py"
    LINT="$SKILL_DIR/scripts/wiki-lint.py"
+   RENAME="$SKILL_DIR/scripts/wiki-rename.py"
+   CONFIG="$SKILL_DIR/scripts/light-weight-wiki-config.py"
    ```
 
    从本 skill 目录解析，勿从 cwd 或 vault 猜。脚本与 `wiki_lib.py` 需**一起拷贝**（写入/建库/检查共用它）。
 2. **确认 `python3`/`python`** 可用；缺时按各分册的「降级」处理。
+
+## 配置 vaultPath（在哪配你的知识库路径）
+
+各脚本的 vault 路径按优先级解析：
+
+1. **命令行参数**（最高）：`wiki-write.py <vault> ...`
+2. **环境变量** `LIGHTWEIGHT_WIKI_VAULT`
+3. **配置文件** `~/.config/light-weight-wiki/config.json`（或 `$XDG_CONFIG_HOME/light-weight-wiki/config.json`）
+4. **交互询问**：以上都没有时，若在交互终端（TTY）里运行，脚本会**主动询问** vault 绝对路径，校验通过后自动写入配置文件。
+
+用配置命令查看/设置（推荐先跑一次，之后所有脚本免传路径）：
+
+```bash
+python3 "$CONFIG" --vault /absolute/path/to/your/vault          # 设置 vaultPath
+python3 "$CONFIG" --type-folders 'project=wiki/projects;area=wiki/concepts'  # 设置自定义类型路由
+python3 "$CONFIG"                                               # 查看当前配置
+```
+
+> 配置文件同时承载 `vaultPath` 与 `typeFolders`，对齐 dsh-obsidian 的 `config.vaultPath` / `config.typeFolders`，但用跨 agent 通用的 JSON 文件而非 DSH 的 cordis 配置。
 
 ## 目录约定
 
@@ -53,6 +74,7 @@ description: 把一个 Markdown 文件夹建成并维护成可检索的个人/�
 ```
 
 - 类型→目录：`domain|area→wiki/areas`，`project→wiki/projects`，`resource→wiki/resources`，`source→wiki/sources`，`archive→wiki/archive`。
+- **自定义类型路由**：各脚本支持 `--type_folders "type=wiki/目录"`（分号分隔多项），对齐 dsh-obsidian 的 `config.typeFolders`，用于非 generic 模式（repository/sitemap 等）的自定义目录结构。
 - **机器页**（`index`/`hot`/`log`/`readme`/`Lint Report*`）由系统管理，不可覆盖/改名/删除。
 - 页面用 `[[页面名]]` 互链 + YAML frontmatter（`type`/`created`/`updated`/`tags`/`source`/`source_hash`）。
 

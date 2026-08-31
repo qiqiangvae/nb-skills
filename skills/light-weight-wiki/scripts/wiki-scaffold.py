@@ -41,7 +41,7 @@ def plan(vault: Path, template: str) -> dict:
             plan["create"].append(str(d))
 
     files = {
-        l["index"]: "# Index\n\n## areas\n\n## projects\n\n## resources\n\n## sources\n\n",
+        l["index"]: "# Index\n\n## Areas\n\n## Projects\n\n## Resources\n\n## Sources\n\n",
         l["hot"]: "# Hot Cache\n\n_Recent context, refreshed by `wiki_search --quick`._\n",
         l["log"]: "# Log\n\n",
         vault / "inbox" / "Inbox.md":
@@ -73,14 +73,20 @@ def main(argv=None) -> int:
         except (AttributeError, ValueError):
             pass
     p = argparse.ArgumentParser(description="Scaffold a lightweight LLM-Wiki vault.")
-    p.add_argument("vault")
+    p.add_argument("vault", nargs="?", default=None,
+                   help="vault root; omit to use LIGHTWEIGHT_WIKI_VAULT / config.json")
     p.add_argument("--apply", action="store_true")
     p.add_argument("--template", choices=["default", "minimal", "research"], default="default")
     args = p.parse_args(argv)
 
-    vault = Path(args.vault)
+    vault = lib.ensure_vault_path(args.vault, require_wiki=False)
+    if vault is None:
+        print(json.dumps({"error": "no vault path: pass it, set LIGHTWEIGHT_WIKI_VAULT, "
+                                    "or run light-weight-wiki-config.py --vault <path>"},
+                         ensure_ascii=False), file=sys.stderr)
+        return 2
     if not vault.is_dir() and not args.apply:
-        print(json.dumps({"error": f"vault is not a directory: {args.vault}"},
+        print(json.dumps({"error": f"vault is not a directory: {vault}"},
                          ensure_ascii=False), file=sys.stderr)
         return 2
 

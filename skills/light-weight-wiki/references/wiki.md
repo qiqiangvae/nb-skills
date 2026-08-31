@@ -10,8 +10,10 @@
 | --- | --- | --- |
 | `wiki-scaffold.py` | 建库 / 补目录骨架 | `wiki_scaffold` |
 | `wiki-write.py` | 写入/更新一页并记账 | `wiki_write` |
-| `wiki-search.py` | BM25 检索 + 链接图 | `wiki_query` |
+| `wiki-search.py` | BM25 检索 + 链接图 | `wiki_query` / `wiki_list`（`--list`） |
 | `wiki-lint.py` | 健康检查 | `wiki_lint` |
+| `wiki-rename.py` | 改名/删页（改名默认同步全库引用） | `wiki_rename` |
+| `light-weight-wiki-config.py` | 查看/设置 vaultPath 与 typeFolders | （原版 cordis 配置） |
 
 ```bash
 SKILL_DIR=<本 skill（light-weight-wiki）所在目录>
@@ -19,9 +21,15 @@ SCAFFOLD="$SKILL_DIR/scripts/wiki-scaffold.py"
 WRITE="$SKILL_DIR/scripts/wiki-write.py"
 SEARCH="$SKILL_DIR/scripts/wiki-search.py"
 LINT="$SKILL_DIR/scripts/wiki-lint.py"
+RENAME="$SKILL_DIR/scripts/wiki-rename.py"
+CONFIG="$SKILL_DIR/scripts/light-weight-wiki-config.py"
 ```
 
 从本 skill 目录解析，勿从 cwd 或 vault 猜。脚本与 `wiki_lib.py` 需一起拷贝。
+
+**vault 路径来源**（所有脚本一致）：命令行参数 > `LIGHTWEIGHT_WIKI_VAULT` 环境变量 >
+`~/.config/light-weight-wiki/config.json` > 交互询问（TTY 时主动询问并写入配置）。
+建议先 `python3 "$CONFIG" --vault /abs/path` 设置一次，之后免传路径。
 
 ## 何时建库
 
