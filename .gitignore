@@ -25,3 +25,7 @@ pnpm-lock.yaml
 # 构建 / 临时产物
 *.log
 release-notes-*.md
+
+# Python / 缓存产物
+__pycache__/
+*.pyc
