@@ -91,8 +91,8 @@ Matt Pocock 公开的「真·工程」Agent Skills 合集，强调可组合、�
 - **一句话**：两套视觉系统 —— Style A「电子杂志 × 电子墨水」（衬线标题 + WebGL 流体背景 + 暖色），Style B「瑞士国际主义」（网格点阵 + IKB / 柠檬黄 / 柠檬绿 / 安全橙锚点色）；同一套规则还能出公众号 21:9、小红书 3:4 等封面。
 - **适合**：线下分享、产品发布、demo day、带个人风格的演讲。**不适合**：大段表格数据、培训课件、需要多人协作编辑（静态 HTML）。
 - **触发词**：「杂志风 PPT」「瑞士风 PPT」「Swiss Style」「horizontal swipe deck」。
-- **校验器**：`node scripts/validate-swiss-deck.mjs`（瑞士风版式 / 图片槽位 / 对齐，有 Playwright 时做后验测量）；`node scripts/validate-presenter-mode.mjs`（演讲者模式，目前仅上游仓库带）。
-- **本地副本说明**：现装的那份来自技能市场分发包，额外带 `scripts/html_to_pptx.py` + `references/pptx-guide.md`（可把 HTML 转成可编辑 `.pptx`），但也缺上游的 `presenter-mode` 相关文件；上游仓库本身只做 HTML。要完全跟随上游，按下一节用 `git clone` 覆盖（先备份现有目录）。
+- **校验器**：`node scripts/validate-swiss-deck.mjs`（瑞士风版式 / 图片槽位 / 对齐，有 Playwright 时做后验测量）；`node scripts/validate-presenter-mode.mjs`、`node scripts/check-presenter-runtime-sync.mjs`（演讲者模式）。
+- **本地安装**：`git clone` 自上游 main（当前 `c91369c`，2026-08-07），更新即 `git pull`。此前那份技能市场分发包额外带 HTML→`.pptx` 导出（`scripts/html_to_pptx.py` + `references/pptx-guide.md`）、缺 `presenter-mode` 相关文件，已备份到 `~/.agents/backups/guizang-ppt-skill-market-20260913/`。
 
 ---
 
@@ -144,7 +144,7 @@ npx skills add https://github.com/op7418/guizang-ppt-skill --skill guizang-ppt-s
 git clone https://github.com/op7418/guizang-ppt-skill.git ~/.agents/skills/guizang-ppt-skill
 ```
 
-更新：`cd ~/.agents/skills/guizang-ppt-skill && git pull`（仅 git clone 安装的目录可用）。上游说明见 <https://github.com/op7418/guizang-ppt-skill>。
+更新：`cd ~/.agents/skills/guizang-ppt-skill && git pull`。上游说明见 <https://github.com/op7418/guizang-ppt-skill>。
 
 ---
 
