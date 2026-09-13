@@ -96,6 +96,20 @@ Matt Pocock 公开的「真·工程」Agent Skills 合集，强调可组合、�
 
 ---
 
+### ⭐ ponytail（`@mengyuly/dsh-ponytail`）
+
+把 [DietrichGebert/ponytail](https://github.com/DietrichGebert/ponytail) 的「懒惰资深工程师」极简编码原则适配到 DSH：常驻规则集 + 会话级档位 + 一组一次性 skill。
+
+- **来源**：MengYuil/dsh-ponytail（DSH 适配版）
+  - npm：`@mengyuly/dsh-ponytail`
+  - 仓库：<https://github.com/MengYuil/dsh-ponytail>
+- **本地路径**：`~/.dsh/profiles/web/node_modules/@mengyuly/dsh-ponytail/` —— 注意是 **DSH 插件**，不是 `~/.agents/skills/` 下的 skill 目录
+- **一句话**：每轮注入 YAGNI 决策阶梯（`lite` / `full` / `ultra` / `off`，档位会话级、结束自动释放），并附带按需加载的 `/ponytail-review`（只找过度工程）、`/ponytail-audit`（全仓审计）、`/ponytail-debt`（收割 `ponytail:` 注释）、`/ponytail-gain`（上游计分板）、`/ponytail-help`。
+- **为什么收录**：它把「能不写就不写，先复用标准库 / 原生能力 / 已装依赖」固化成常驻约束，与本仓库「三方只记来源、不复制内容」的维护约定同源；注意上游 Benchmark 的 token / 成本 / 延迟收益**不构成 DSH 适配版的保证**。
+- **常用命令**：`/ponytail`（裸命令只报告）、`/ponytail status|reset`、`/ponytail lite|full|ultra|off`、`/ponytail default <mode>`；说「停止 ponytail」「normal mode」可临时停用。默认值优先级：会话 override > `PONYTAIL_DEFAULT_MODE` > Profile config > 用户 config > `full`。
+
+---
+
 ## 收录一览
 
 > 星级 = 该 skill 对本项目/日常的推荐程度；「已装」指本地 `~/.agents/skills/` 实际存在。
@@ -104,12 +118,14 @@ Matt Pocock 公开的「真·工程」Agent Skills 合集，强调可组合、�
 | --- | --- | --- | --- |
 | `playwright-cli` | microsoft/playwright-cli | 浏览器自动化 CLI | ⭐⭐⭐ |
 | `guizang-ppt-skill` | op7418/guizang-ppt-skill | 网页 PPT（杂志风 / 瑞士风）+ 演讲者模式 | ⭐⭐⭐ |
+| `ponytail` | MengYuil/dsh-ponytail | 常驻极简编码模式 + review / audit / debt 技能 | ⭐⭐⭐ |
 | `setup-matt-pocock-skills` 及整套工程 skill | mattpocock/skills | 规划/调试/TDD/领域建模/交接 | ⭐⭐⭐ |
 | `find-skills` | 社区 | 发现并安装 agent skills | ⭐⭐ |
 | `okr-coach-zh` | 社区 | 大厂风格 OKR 教练 | ⭐ |
 | `outlook-microsoft` | 社区 | 世纪互联版 Outlook 邮件/日历 | ⭐ |
 
 > 注：`handdrawn-infographic`、`reply-cr`、`zagent-gen` 为自研/团队 skill 的符号链接，指向 `~/.config/ocean-skills/skills/`，详见各自项目。
+> 注：`ponytail` 是 DSH 插件（以插件方式提供 skill），不落在 `~/.agents/skills/`，安装方式见下节。
 
 ---
 
@@ -145,6 +161,17 @@ git clone https://github.com/op7418/guizang-ppt-skill.git ~/.agents/skills/guiza
 ```
 
 更新：`cd ~/.agents/skills/guizang-ppt-skill && git pull`。上游说明见 <https://github.com/op7418/guizang-ppt-skill>。
+
+### ponytail（DSH 插件）
+
+```bash
+# 装进某个 profile（web 可换成 tui / 自定义）
+dsh plugin --profile web add @mengyuly/dsh-ponytail
+# 或直接装 GitHub / Release 打包件
+dsh plugin --profile web add github:MengYuil/dsh-ponytail
+```
+
+装完需把 `@mengyuly/dsh-ponytail` 列入该 profile 的 `dsh.profile.bundles` 并重启 profile 才生效。验证：会话技能目录出现 `ponytail*` 技能，发 `/ponytail-help` 即可确认。
 
 ---
 
