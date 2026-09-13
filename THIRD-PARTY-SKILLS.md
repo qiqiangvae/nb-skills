@@ -24,7 +24,7 @@
 - **来源**：microsoft/playwright-cli
   - 仓库：<https://github.com/microsoft/playwright-cli>
   - 文档：<https://playwright.dev/docs/getting-started-cli>
-- **本地路径**：`~/.agents/skills/playwright-cli/`
+- **安装位置**：全局 skills 目录 `~/.agents/skills/playwright-cli/`（或项目级 `.agents/skills/`）
 - **一句话**：用精简的 CLI 命令驱动浏览器（点按、输入、截图、录屏、mock 请求、跑 Playwright 测试），避免把笨重的 tool schema 和无障碍树塞进模型上下文。
 - **为什么重要**：相比 Playwright MCP，CLI + SKILL 更省 token，适合要同时处理大代码库 + 浏览器自动化的高频 coding agent。
 - **常用命令速查**：
@@ -40,7 +40,7 @@
   playwright-cli install --skills     # 安装 skill 集
   ```
 
-- **本地附带参考文档**（`references/`）：`element-attributes.md`、`playwright-tests.md`、`request-mocking.md`、`session-management.md`、`storage-state.md`、`tracing.md`、`video-recording.md`。
+- **附带参考文档**（`references/`）：`element-attributes.md`、`playwright-tests.md`、`request-mocking.md`、`session-management.md`、`storage-state.md`、`tracing.md`、`video-recording.md`。
 
 ---
 
@@ -51,9 +51,9 @@ Matt Pocock 公开的「真·工程」Agent Skills 合集，强调可组合、�
 - **来源**：mattpocock/skills
   - 仓库：<https://github.com/mattpocock/skills>
 - **安装**：仓库内自带 `/setup-matt-pocock-skills`，在每个 repo 里跑一次即可（写入 `CLAUDE.md` / `AGENTS.md` 的 `## Agent skills` 块，并配置 issue tracker、triage 标签、domain doc 布局）。
-- **本地路径**：`~/.agents/skills/`
+- **安装位置**：全局 skills 目录 `~/.agents/skills/`（或项目级 `.agents/skills/`）
 - **为什么重要**：它把「规划、调试、TDD、领域建模、交接、git 护栏」这类真实工程流程固化成小颗、可组合的 skill，是比「一段 prompt 一个文件夹」更健康的 agent 工作流范式。
-- **完整 skill 清单**（已本地安装）：
+- **完整 skill 清单**：
 
   | Skill | 用途 |
   | --- | --- |
@@ -83,36 +83,34 @@ Matt Pocock 公开的「真·工程」Agent Skills 合集，强调可组合、�
 
 ### ⭐ guizang-ppt-skill（歸藏 PPT Skill）
 
-用 Agent 生成网页 PPT（单文件 HTML 横向翻页 deck），自带演讲者模式、排练计时与现场工具。
+用 Agent 生成网页 PPT：**单文件 HTML 横向翻页 deck**，自带演讲者视图、观众屏同步、讲稿备注与排练计时。
 
-- **来源**：op7418/guizang-ppt-skill（作者 [歸藏](https://x.com/op7418)）
-  - 仓库：<https://github.com/op7418/guizang-ppt-skill>
-- **本地路径**：`~/.agents/skills/guizang-ppt-skill/`
-- **一句话**：两套视觉系统 —— Style A「电子杂志 × 电子墨水」（衬线标题 + WebGL 流体背景 + 暖色），Style B「瑞士国际主义」（网格点阵 + IKB / 柠檬黄 / 柠檬绿 / 安全橙锚点色）；同一套规则还能出公众号 21:9、小红书 3:4 等封面。
-- **适合**：线下分享、产品发布、demo day、带个人风格的演讲。**不适合**：大段表格数据、培训课件、需要多人协作编辑（静态 HTML）。
-- **触发词**：「杂志风 PPT」「瑞士风 PPT」「Swiss Style」「horizontal swipe deck」。
-- **校验器**：`node scripts/validate-swiss-deck.mjs`（瑞士风版式 / 图片槽位 / 对齐，有 Playwright 时做后验测量）；`node scripts/validate-presenter-mode.mjs`、`node scripts/check-presenter-runtime-sync.mjs`（演讲者模式）。
-- **本地安装**：`git clone` 自上游 main（当前 `c91369c`，2026-08-07），更新即 `git pull`。此前那份技能市场分发包额外带 HTML→`.pptx` 导出（`scripts/html_to_pptx.py` + `references/pptx-guide.md`）、缺 `presenter-mode` 相关文件，已备份到 `~/.agents/backups/guizang-ppt-skill-market-20260913/`。
+- **来源**：op7418/guizang-ppt-skill（作者 [歸藏](https://x.com/op7418)），仓库 <https://github.com/op7418/guizang-ppt-skill>
+- **一句话**：两套视觉系统 —— Style A「电子杂志 × 电子墨水」（衬线标题 + WebGL 流体背景 + 暖色），Style B「瑞士国际主义」（网格点阵 + IKB / 柠檬黄 / 柠檬绿 / 安全橙锚点色）；同一套视觉规则还能出公众号 21:9、小红书 3:4 等封面。
+- **亮点**：单文件 HTML，不需要构建或服务器；横向翻页支持键盘 ← →、滚轮、触屏、底部圆点与 ESC 索引；Style A 多种布局、Style B 锁定版式；内置演讲者模式（当前页 / 下一页 16:9 预览、结构化备注、计时排练、自动翻页、激光笔、圈选、黑/白屏、观众屏同步）；按 `B` 可关掉 WebGL 动画走低功耗静态背景。
+- **适合 / 不适合**：适合线下分享、行业讲话、产品发布、demo day、带个人风格的演讲；不适合大段表格数据、培训课件、需要多人协作编辑（静态 HTML）。当前核心交付是 HTML，PPTX 不在主流程内。
+- **触发词**：「杂志风 PPT」「瑞士风 PPT」「Swiss Style」「horizontal swipe deck」「editorial magazine style presentation」。
+- **自检**：对照 `references/checklist.md`（P0 项必须全过）；两套主题分别跑 `node scripts/validate-swiss-deck.mjs`、`node scripts/validate-presenter-mode.mjs` 校验版式 / 图片槽位 / 对齐（有 Playwright 时做后验测量）。
 
 ---
 
 ### ⭐ ponytail（`@mengyuly/dsh-ponytail`）
 
-把 [DietrichGebert/ponytail](https://github.com/DietrichGebert/ponytail) 的「懒惰资深工程师」极简编码原则适配到 DSH：常驻规则集 + 会话级档位 + 一组一次性 skill。
+「懒惰资深工程师」编码模式：每轮给 Agent 注入一套极简编码约束，外加一组按需加载的过度工程审查 / 审计 / 技术债技能。
 
-- **来源**：MengYuil/dsh-ponytail（DSH 适配版）
-  - npm：`@mengyuly/dsh-ponytail`
-  - 仓库：<https://github.com/MengYuil/dsh-ponytail>
-- **本地路径**：`~/.dsh/profiles/web/node_modules/@mengyuly/dsh-ponytail/` —— 注意是 **DSH 插件**，不是 `~/.agents/skills/` 下的 skill 目录
-- **一句话**：每轮注入 YAGNI 决策阶梯（`lite` / `full` / `ultra` / `off`，档位会话级、结束自动释放），并附带按需加载的 `/ponytail-review`（只找过度工程）、`/ponytail-audit`（全仓审计）、`/ponytail-debt`（收割 `ponytail:` 注释）、`/ponytail-gain`（上游计分板）、`/ponytail-help`。
-- **为什么收录**：它把「能不写就不写，先复用标准库 / 原生能力 / 已装依赖」固化成常驻约束，与本仓库「三方只记来源、不复制内容」的维护约定同源；注意上游 Benchmark 的 token / 成本 / 延迟收益**不构成 DSH 适配版的保证**。
-- **常用命令**：`/ponytail`（裸命令只报告）、`/ponytail status|reset`、`/ponytail lite|full|ultra|off`、`/ponytail default <mode>`；说「停止 ponytail」「normal mode」可临时停用。默认值优先级：会话 override > `PONYTAIL_DEFAULT_MODE` > Profile config > 用户 config > `full`。
+- **来源**：MengYuil/dsh-ponytail（DSH 适配版，MIT）；上游理念来自 [DietrichGebert/ponytail](https://github.com/DietrichGebert/ponytail)
+  - npm：`@mengyuly/dsh-ponytail`，仓库 <https://github.com/MengYuil/dsh-ponytail>
+- **一句话**：用 YAGNI 决策阶梯（能不写 → 复用已有 → 标准库 → 原生能力 → 已装依赖 → 一行 → 最小实现）约束每轮产出，默认选最短正确实现，修根因而非症状；安全底线（输入校验、防数据丢失、安全措施、无障碍、明确验收项）在任何档位都不可删。
+- **档位**：`/ponytail lite|full|ultra|off`（默认 `full`；`ultra` 会先要证据、优先删除或复用、主动质疑投机性抽象/缓存/新依赖，但不是无脑拒绝）。档位会话级，互不干扰，会话结束自动释放；`/ponytail status` 只查询，`/ponytail reset` 清除会话覆盖，`/ponytail default <mode>` 持久化默认值；说「停止 ponytail」「normal mode」可临时停用。
+- **配套技能**（按需加载，不占常驻 prompt）：`/ponytail-review` 针对最近改动只挑过度工程（每条带位置、替代方案与实际调用证据）、`/ponytail-audit` 全仓审计并区分「可安全删除」与「需先验证」、`/ponytail-debt` 把代码里的 `ponytail:` 注释收割成债务账本、`/ponytail-gain` 上游 Benchmark 计分板、`/ponytail-help` 参考卡。
+- **为什么推荐**：它把「能不写就不写」变成常驻约束而不是一次性提醒，恰好对冲 Agent 默认爱加抽象、缓存和新依赖的偏科。注意其效率数字来自上游 Benchmark，是**上游参考值、不是本适配版的保证**。
+- **形态**：DSH 插件（以插件形式提供上述 skill），不走 `~/.agents/skills/` 目录安装。
 
 ---
 
 ## 收录一览
 
-> 星级 = 该 skill 对本项目/日常的推荐程度；「已装」指本地 `~/.agents/skills/` 实际存在。
+> 星级 = 该 skill 的推荐程度（⭐⭐⭐ 强烈推荐 / ⭐⭐ 值得一试 / ⭐ 场景有限）。
 
 | Skill | 来源 | 用途 | 推荐 |
 | --- | --- | --- | --- |
@@ -124,7 +122,7 @@ Matt Pocock 公开的「真·工程」Agent Skills 合集，强调可组合、�
 | `okr-coach-zh` | 社区 | 大厂风格 OKR 教练 | ⭐ |
 | `outlook-microsoft` | 社区 | 世纪互联版 Outlook 邮件/日历 | ⭐ |
 
-> 注：`handdrawn-infographic`、`reply-cr`、`zagent-gen` 为自研/团队 skill 的符号链接，指向 `~/.config/ocean-skills/skills/`，详见各自项目。
+> 注：`handdrawn-infographic`、`reply-cr`、`zagent-gen` 为自研 / 团队 skill，来源与用法见各自项目。
 > 注：`ponytail` 是 DSH 插件（以插件方式提供 skill），不落在 `~/.agents/skills/`，安装方式见下节。
 
 ---
@@ -177,6 +175,6 @@ dsh plugin --profile web add github:MengYuil/dsh-ponytail
 
 ## 维护约定
 
-- 新收录三方 skill 时，在本文件「收录一览」加一行，并在相应小节补充来源、本地路径、一句话用途。
+- 新收录三方 skill 时，在本文件「收录一览」加一行，并在相应小节补充来源、能力亮点、适用场景与安装 / 更新方式；只写 skill 本身（来源、能做什么、怎么装怎么用），不写个人机器上的安装状态或目录。
 - 自研 skill 放 `skills/` 目录并写 `SKILL.md`；三方 skill 只记录来源与使用说明，不在本项目内复制其内容（避免版本漂移）。
 - 链接上方「更新时间」为当前日期。
