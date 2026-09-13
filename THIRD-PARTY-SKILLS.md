@@ -3,7 +3,7 @@
 > 本文件记录 `nb-skills` 项目所使用/收录的第三方 Agent Skills，与 `skills/` 目录下自研 skill 区分。
 > 安装位置：`~/.agents/skills/`（全局），各项目可按需在 `.agents/skills/` 下单独安装。
 >
-> 更新时间：2026-06-XX
+> 更新时间：2026-09-13
 
 ---
 
@@ -81,6 +81,21 @@ Matt Pocock 公开的「真·工程」Agent Skills 合集，强调可组合、�
 
 ---
 
+### ⭐ guizang-ppt-skill（歸藏 PPT Skill）
+
+用 Agent 生成网页 PPT（单文件 HTML 横向翻页 deck），自带演讲者模式、排练计时与现场工具。
+
+- **来源**：op7418/guizang-ppt-skill（作者 [歸藏](https://x.com/op7418)）
+  - 仓库：<https://github.com/op7418/guizang-ppt-skill>
+- **本地路径**：`~/.agents/skills/guizang-ppt-skill/`
+- **一句话**：两套视觉系统 —— Style A「电子杂志 × 电子墨水」（衬线标题 + WebGL 流体背景 + 暖色），Style B「瑞士国际主义」（网格点阵 + IKB / 柠檬黄 / 柠檬绿 / 安全橙锚点色）；同一套规则还能出公众号 21:9、小红书 3:4 等封面。
+- **适合**：线下分享、产品发布、demo day、带个人风格的演讲。**不适合**：大段表格数据、培训课件、需要多人协作编辑（静态 HTML）。
+- **触发词**：「杂志风 PPT」「瑞士风 PPT」「Swiss Style」「horizontal swipe deck」。
+- **校验器**：`node scripts/validate-swiss-deck.mjs`（瑞士风版式 / 图片槽位 / 对齐，有 Playwright 时做后验测量）；`node scripts/validate-presenter-mode.mjs`（演讲者模式，目前仅上游仓库带）。
+- **本地副本说明**：现装的那份来自技能市场分发包，额外带 `scripts/html_to_pptx.py` + `references/pptx-guide.md`（可把 HTML 转成可编辑 `.pptx`），但也缺上游的 `presenter-mode` 相关文件；上游仓库本身只做 HTML。要完全跟随上游，按下一节用 `git clone` 覆盖（先备份现有目录）。
+
+---
+
 ## 收录一览
 
 > 星级 = 该 skill 对本项目/日常的推荐程度；「已装」指本地 `~/.agents/skills/` 实际存在。
@@ -88,6 +103,7 @@ Matt Pocock 公开的「真·工程」Agent Skills 合集，强调可组合、�
 | Skill | 来源 | 用途 | 推荐 |
 | --- | --- | --- | --- |
 | `playwright-cli` | microsoft/playwright-cli | 浏览器自动化 CLI | ⭐⭐⭐ |
+| `guizang-ppt-skill` | op7418/guizang-ppt-skill | 网页 PPT（杂志风 / 瑞士风）+ 演讲者模式 | ⭐⭐⭐ |
 | `setup-matt-pocock-skills` 及整套工程 skill | mattpocock/skills | 规划/调试/TDD/领域建模/交接 | ⭐⭐⭐ |
 | `find-skills` | 社区 | 发现并安装 agent skills | ⭐⭐ |
 | `okr-coach-zh` | 社区 | 大厂风格 OKR 教练 | ⭐ |
@@ -117,6 +133,18 @@ playwright-cli install --skills # 同时安装 skill 集到 ~/.agents/skills/
 ```
 
 或将仓库 `skills/` 目录同步到 `~/.agents/skills/`。更新源仓库：<https://github.com/mattpocock/skills>。
+
+### guizang-ppt-skill
+
+```bash
+# 官方一行安装（skills CLI）
+npx skills add https://github.com/op7418/guizang-ppt-skill --skill guizang-ppt-skill
+
+# 或 git clone 到全局 skills 目录，之后可用 git pull 更新
+git clone https://github.com/op7418/guizang-ppt-skill.git ~/.agents/skills/guizang-ppt-skill
+```
+
+更新：`cd ~/.agents/skills/guizang-ppt-skill && git pull`（仅 git clone 安装的目录可用）。上游说明见 <https://github.com/op7418/guizang-ppt-skill>。
 
 ---
 

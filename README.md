@@ -79,4 +79,5 @@ Windows 直接运行启动器（它自带 `-ExecutionPolicy Bypass`，**无需**
 用到的三方 skills 记录在 [THIRD-PARTY-SKILLS.md](THIRD-PARTY-SKILLS.md)，重点推荐：
 
 - **[playwright-cli](https://github.com/microsoft/playwright-cli)** — token 高效的浏览器自动化 CLI。
+- **[guizang-ppt-skill](https://github.com/op7418/guizang-ppt-skill)** — 用 Agent 生成网页 PPT（电子杂志风 / 瑞士国际主义），含演讲者模式与版式校验器。
 - **[mattpocock/skills](https://github.com/mattpocock/skills)** — 真·工程 skills 合集（规划/调试/TDD/领域建模/交接等）。本仓库的 `scripts/setup.sh` 即参考其 `/setup-matt-pocock-skills` 思路设计。
