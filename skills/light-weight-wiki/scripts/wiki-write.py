@@ -167,8 +167,9 @@ def main(argv=None) -> int:
         indexed = False
     else:
         # generic 扁平模式：脚本负责 index.md 的 ## Section 记账
-        effective_tf = type_folders if type_folders is not None else lib.DEFAULT_TYPE_FOLDERS
-        section_heading = effective_tf.get(args.type, effective_tf.get("resource", "wiki/resources")).split("/")[-1]
+        # 分节标题取页面**实际落点目录**名：只看 6 类型默认表会把 concept/decision 等
+        # repository 类型兜底成 Resources，导致 index 分节和页面所在目录对不上。
+        section_heading = lib.route_folder(vault, args.type, type_folders).name
         # 统一首字母大写，与 scaffold 生成的 ## Areas/## Projects 分节一致（避免小写分节分裂）
         section_heading = section_heading[:1].upper() + section_heading[1:] if section_heading else section_heading
         lib.upsert_index_entry(lib.layout(vault, type_folders)["index"], args.type, section_heading, args.title)

@@ -37,6 +37,34 @@ def link_name(target: str) -> str:
     return name.split("#", 1)[0].split("|", 1)[0].strip()
 
 
+def empty_sections(body: str) -> list[str]:
+    """返回自身没有内容的 `##` 小节标题。
+
+    判定：某个 `##` 标题之后的下一个非空行不存在，或它本身是同级/更高级标题（`#`/`##`）。
+    - 标题后跟一个空行再跟正文是标准 Markdown 写法，**不算**空节；
+    - 下辖 `###` 子标题的父节也不算空，否则结构化导航会被整体误报；
+    - 代码块 fence 内的 `##` 不是标题，跳过。
+    """
+    lines = body.splitlines()
+    heads: list[tuple[int, str]] = []
+    fenced = False
+    for i, line in enumerate(lines):
+        if re.match(r"^\s*(```|~~~)", line):
+            fenced = not fenced
+            continue
+        if fenced:
+            continue
+        m = re.match(r"^##\s+(\S.*?)\s*$", line)
+        if m:
+            heads.append((i, m.group(1)))
+    out = []
+    for i, title in heads:
+        nxt = next((l for l in lines[i + 1:] if l.strip()), "")
+        if not nxt or re.match(r"^#{1,2}\s", nxt):
+            out.append(title)
+    return out
+
+
 def page_links(body: str) -> set[str]:
     s = set()
     for m in WIKILINK_RE.finditer(body):
@@ -146,16 +174,22 @@ def main(argv=None) -> int:
                 issues.append({"severity": "warn", "category": "dead-link", "file": f"- {name}",
                                "message": f"unresolved [[{t}]]",
                                "suggestion": f'create "{t}" or fix the link'})
-        for m in re.finditer(r"\n## ([^\n]+)\n(?=\n|## |$)", body):
+        for title in empty_sections(body):
             issues.append({"severity": "info", "category": "empty-section", "file": f"- {name}",
-                           "message": f'section "{m.group(1)}" is empty', "suggestion": "add content"})
+                           "message": f'section "{title}" is empty', "suggestion": "add content"})
         if not inbound.get(name):
             issues.append({"severity": "info", "category": "orphan", "file": f"- {name}",
                            "message": f'"{name}" has no inbound links', "suggestion": "link it"})
 
     # 失效 index / 陈旧 hot
     if l["index"].exists():
-        index_body = lib.read_utf8(l["index"])
+        # 登记方式两种都算：`[[页面]]` 与 markdown 链接 `[文字](页面.md)`。
+        # 只看 wikilink 会把 `[Overview](overview.md)` 这类登记误报成失效。
+        index_names = page_links(lib.read_utf8(l["index"]))
+        # repository 模式：wiki-write 刻意不改根 index.md（分区导航由人工维护），
+        # 页面的登记处是它自己分区的 `_index.md`。两处任一命中即算已索引，
+        # 否则这些页会永远报 stale-index，与写入侧的契约自相矛盾。
+        repository = lib.is_repository_vault(vault)
         for p in lib.walk_md(wiki_dir):
             name = p.stem
             if lib.is_machinery(name):
@@ -164,9 +198,16 @@ def main(argv=None) -> int:
             cands = {name}
             if fm.get("title"):
                 cands.add(str(fm["title"]))
-            if not any(f"[[{c}]]" in index_body for c in cands):
+            linked = bool(cands & index_names)
+            if not linked and repository:
+                section_index = p.parent / "_index.md"
+                linked = (section_index.is_file()
+                          and bool(cands & page_links(lib.read_utf8(section_index))))
+            if not linked:
                 issues.append({"severity": "info", "category": "stale-index", "file": "- index",
-                               "message": f'"{name}" missing from index', "suggestion": "re-run wiki-write"})
+                               "message": f'"{name}" missing from index',
+                               "suggestion": "re-run wiki-write" if not repository else
+                                             "add it to wiki/index.md or its section _index.md"})
     if l["hot"].exists():
         age = (datetime.now().timestamp() - l["hot"].stat().st_mtime) / 86400
         if age > 30:

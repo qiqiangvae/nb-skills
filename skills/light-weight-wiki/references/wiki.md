@@ -14,6 +14,7 @@
 | `wiki-lint.py` | 健康检查 | `wiki_lint` |
 | `wiki-rename.py` | 改名/删页（改名默认同步全库引用） | `wiki_rename` |
 | `light-weight-wiki-config.py` | 查看/设置 vaultPath 与 typeFolders | （原版 cordis 配置） |
+| `selftest.py` | 回归自检（改过脚本就跑一遍，零依赖） | — |
 
 ```bash
 SKILL_DIR=<本 skill（light-weight-wiki）所在目录>

@@ -29,8 +29,8 @@ python3 "$LINT" "<vault>" --report # 额外写 <vault>/wiki/meta/Lint Report <�
 | `dead-link` | warn | 引用了不存在的 `[[页面]]` → 补页或改链 |
 | `frontmatter` | warn/info | 缺 `type`/`created` → 按写作时补 |
 | `orphan` | info | 无内容页入链 → 从相关页链接它 |
-| `empty-section` | info | `## 标题` 无内容 → 补充或删节 |
-| `stale-index` | info | 某页不在 `index.md` → 重跑写入或手动补 |
+| `empty-section` | info | `## 标题` 之后既无正文也无 `###` 子节 → 补充或删节（「标题+空行+正文」是标准写法，不报；代码块 fence 内的 `##` 不算标题） |
+| `stale-index` | info | 某页在根 `index.md` 与所在分区 `_index.md` 都没登记 → 重跑写入或手动补（`[[页面]]` 与 markdown 链接两种登记都认） |
 | `stale-hot` | info | `hot.md` > 30 天未刷新 → 用 `--quick` 刷新 |
 
 ## 输出（JSON）
