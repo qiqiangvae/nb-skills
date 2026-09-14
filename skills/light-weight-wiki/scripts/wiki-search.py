@@ -50,12 +50,10 @@ B = 0.75
 SNIPPET_RADIUS = 80
 MAX_DOC_TERMS = 20000  # 单页 token 上限，防 CJK 元词爆炸
 
-# 机器页：默认不进入索引
-MACHINERY_BASENAMES = frozenset({"index", "hot", "log", "readme"})
-MACHINERY_PREFIX = "lint report"
-
-# 索引时跳过的目录（隐藏目录 + 常见机器/缓存目录）
-SKIP_DIR_NAMES = frozenset({"meta", "raw", ".raw", "node_modules", ".git", ".obsidian", "inbox"})
+# 机器页判定、目录跳过规则、链接抽取全部复用 wiki_lib（唯一真源）：
+# 三处各写一份时，加一个机器页名就得改三个文件，迟早漂移。
+is_machinery = wiki_lib.is_machinery
+extract_links = wiki_lib.extract_links
 
 # 英文常见停用词（保守、偏召回）
 STOPWORDS = frozenset(
@@ -76,50 +74,19 @@ CJK_NGRAM_SIZES = (1, 2, 3)
 # 内部保留连字符/撇号/下划线（如 "user's"、"well-formed"、"search_term"）。
 TOKEN_RE = re.compile(r"[\w][\w'\-]*", re.UNICODE)
 
-# 链接：
-#  [[目标]] / [[目标|别名]] / [[目标#标题]] / ![[嵌入]]
-WIKILINK_RE = re.compile(r"!?\[\[([^\]|#]+)(?:[#|][^\]]*)?\]\]")
-#  [文字](相对路径.md) 或 [文字](./路径.md#标题)
-MDLINK_RE = re.compile(r"\[[^\]]*\]\(([^)]+\.md)(?:#[^)]*)?\)", re.IGNORECASE)
-# YAML frontmatter（兼容 CRLF 行结尾；BOM 在读取时用 utf-8-sig 剥掉）
-_FM_RE = re.compile(r"\A---\r?\n([\s\S]*?)\r?\n---\r?\n?")
+# 链接语法/归一化、frontmatter 解析都在 wiki_lib（与 lint 的 dead-link 判定同源）
 
 
 # ────────────────────────────────────────────────────────────────────────────
 # 工具
 # ────────────────────────────────────────────────────────────────────────────
-def is_machinery(title: str) -> bool:
-    t = title.lower()
-    return t in MACHINERY_BASENAMES or t.startswith(MACHINERY_PREFIX)
-
-
 def walk_md(root: Path):
-    """递归列出 root 下的 .md，跳过隐藏/机器/缓存目录。"""
-    if not root.is_dir():
-        return
-    for entry in root.rglob("*.md"):
-        try:
-            rel = entry.relative_to(root)
-        except ValueError:
-            continue
-        if any(part in SKIP_DIR_NAMES or part.startswith(".") for part in rel.parts):
-            continue
-        yield entry
+    """递归列出 root 下的 .md，跳过隐藏/机器/缓存目录。
 
-
-def strip_frontmatter(text: str) -> str:
-    m = _FM_RE.match(text)
-    return text[m.end():] if m else text
-
-
-def fm_title(text: str) -> str:
-    m = _FM_RE.match(text)
-    if not m:
-        return ""
-    for line in m.group(1).splitlines():
-        if line.lower().startswith("title:"):
-            return line.split(":", 1)[1].strip().strip("\"'")
-    return ""
+    与 wiki_lib.walk_md 的唯一差别：**含**分区索引页 `_index.md`——它们是可检索、
+    可被 `[[…]]` 指向的导航页，检索不该把它们藏起来。
+    """
+    return wiki_lib.walk_md(root, include_index=True)
 
 
 def collapse_ws(text: str) -> str:
@@ -168,29 +135,6 @@ def tokenize(text: str) -> list[str]:
     return terms
 
 
-def _link_name(target: str) -> str:
-    """把链接目标归一成可匹配的页面标题（去掉目录前缀 / 扩展名 / 锚点）。"""
-    name = target.replace("\\", "/").rsplit("/", 1)[-1]
-    if name.lower().endswith(".md"):
-        name = name[:-3]
-    name = name.split("#", 1)[0].split("|", 1)[0].strip()
-    return name
-
-
-def extract_links(body: str) -> set[str]:
-    """抽取一页的出链目标（去重，返回标题名）。"""
-    links: set[str] = set()
-    for m in WIKILINK_RE.finditer(body):
-        t = m.group(1).strip()
-        if t:
-            links.add(_link_name(t))
-    for m in MDLINK_RE.finditer(body):
-        t = m.group(1).strip()
-        if t:
-            links.add(_link_name(t))
-    return links
-
-
 def _snippet(body: str, qterms: list[str], radius: int = SNIPPET_RADIUS) -> str:
     lower = body.lower()
     best = -1
@@ -221,14 +165,21 @@ def build_index(wiki_dir: Path, include_machinery: bool = False) -> dict:
     title_by_lower: dict[str, str] = {}
 
     for path in walk_md(wiki_dir):
-        title = path.stem
-        if not include_machinery and is_machinery(title):
+        stem = path.stem
+        if not include_machinery and is_machinery(stem):
             continue
         raw = path.read_text(encoding="utf-8-sig", errors="replace")
-        body = strip_frontmatter(raw)
-        fm_t = fm_title(raw)
-        # 标题并入索引文本，否则「标题匹配但正文无该词」的页召回不到
-        tokens = tokenize(f"{title} {fm_t} {body}".strip())[:MAX_DOC_TERMS]
+        fm, body = wiki_lib.parse_frontmatter(raw)
+        fm_t = str(fm.get("title") or "")
+        # 显示名优先取 frontmatter title：分区索引页的文件名恒为 `_index`（每个分区都一样，
+        # 没有信息量，还会让多个分区在结果里撞名）。文件名同时登记为别名，
+        # 这样 `[[Runbooks Index]]` 这类指向导航页的链接能在链接图里落到点上
+        # （旧实现只按 stem 建图，指向 `_index` 的边全部丢失，导航页恒为空入链）。
+        title = fm_t or stem
+        # 标题并入索引文本，否则「标题匹配但正文无该词」的页召回不到。
+        # 索引文本仍用「文件名 + frontmatter title 原文」，与改动前逐字节一致：
+        # 换成显示名会改掉全库的 BM25 权重，让所有查询的排序跟着漂移。
+        tokens = tokenize(f"{stem} {fm_t} {body}".strip())[:MAX_DOC_TERMS]
         outbound = extract_links(body)
         docs.append({
             "title": title, "path": str(path), "tokens": tokens,
@@ -236,6 +187,7 @@ def build_index(wiki_dir: Path, include_machinery: bool = False) -> dict:
         })
         titles.add(title)
         title_by_lower.setdefault(title.lower(), title)
+        title_by_lower.setdefault(stem.lower(), title)
         total_len += len(tokens)
         seen: set[str] = set()
         for t in tokens:
@@ -322,8 +274,13 @@ def cmd_quick(root: Path) -> int:
 
 
 def cmd_list(root: Path, include_machinery: bool = False) -> int:
-    titles = [p.stem for p in walk_md(root)
-              if include_machinery or not is_machinery(p.stem)]
+    """列出页面显示名（frontmatter title 优先，与检索结果里的 title 一致）。"""
+    titles = []
+    for p in walk_md(root):
+        if not include_machinery and is_machinery(p.stem):
+            continue
+        fm, _ = wiki_lib.parse_frontmatter(p.read_text(encoding="utf-8-sig", errors="replace"))
+        titles.append(str(fm.get("title") or p.stem))
     titles.sort()
     print(json.dumps({"titles": titles, "count": len(titles)},
                      ensure_ascii=False, indent=2))

@@ -51,10 +51,12 @@ python3 "$LINT" "<vault>" --report # 额外写 <vault>/wiki/meta/Lint Report <�
 
 ## 边界
 
-- 不要**批量重命名**页面；改名/合并要逐页和用户确认。改名用 `../scripts/wiki-rename.py`（默认自动同步全库 `[[旧名]]` 引用，`--no-sync-refs` 关闭）。
+- 不要**批量重命名**页面；改名/合并要逐页和用户确认。改名用 `../scripts/wiki-rename.py --old X --new Y`（默认同步页内 `title`、全库 `[[旧名]]` 引用与 log；`--no-sync-refs` 只改文件名和 title）；删页用 `--delete X`（连同全库对它的引用一起清理）。
+- 死链/孤儿/失效索引只统计**内容页**：`index`/`hot`/`log`/`readme`/`Lint Report*` 与分区 `_index.md` 不参与，所以清日志不会造成误报。
 - `--report` 写的 `Lint Report <日期>.md` 是**机器页**，不参与检索、不算内容页。
 
 ## 完成标准
 
 - 报告生成；对 `error`/`warn` 逐条给出处置（补页/改链/合并）。
 - 若用户要，`--report` 落一份带日期的报告到 `wiki/meta/`。
+- 修完重跑一次 lint，确认 `error`/`warn` 已清。

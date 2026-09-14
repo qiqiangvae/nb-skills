@@ -137,19 +137,6 @@ def _ask_yn(prompt: str) -> bool:
     return r in ("y", "yes")
 
 
-# 默认类型 → 相对 vault 的目录（dsh-obsidian 默认值，含机器页 index/log/hot）
-DEFAULT_TYPE_FOLDERS = {
-    "domain": "wiki/areas",
-    "area": "wiki/areas",
-    "project": "wiki/projects",
-    "resource": "wiki/resources",
-    "source": "wiki/sources",
-    "archive": "wiki/archive",
-    "index": "wiki",
-    "log": "wiki",
-    "hot": "wiki",
-}
-
 # 机器页：是索引/热缓存/日志，由系统管理，不作为内容页、不可被覆盖/改名/删除
 MACHINERY_BASENAMES = frozenset({"index", "hot", "log", "readme"})
 MACHINERY_PREFIX = "lint report"
@@ -238,10 +225,14 @@ def safe_filename(title: str) -> str:
 
 
 def is_repository_vault(vault: Path) -> bool:
-    """检测 vault 是否为 Obsidian repository 模式。
+    """检测 vault 是否为 Obsidian repository 模式（分区导航由人工维护）。
 
-    判据：`wiki/` 下存在「5 个 generic 扁平目录之外」的、带 `_index.md` 的分区目录，
-    或根 `index.md` 不是脚本预置的 `# Index` 分节模板（而是 Obsidian 导航）。
+    判据一：`wiki/` 下有「5 个 generic 扁平目录之外」的、带 `_index.md` 的分区目录。
+    判据二：根 `index.md` 里**一个 `## ` 分节标题都没有**——脚本生成的 index 必带分节，
+    人工写的导航页通常不带；命中即认为导航人工维护，写入侧不再往里塞机械条目。
+    （旧实现用「head 里没有 "# index" 子串」判断：标题写成 `# Index of everything` 的
+    人工导航会被误判为 generic，而 `# My Notes` 又会让整个库静默切到 repository。
+    分节标题是比子串可靠得多的信号。）
     """
     wiki = vault / "wiki"
     if not wiki.is_dir():
@@ -254,24 +245,15 @@ def is_repository_vault(vault: Path) -> bool:
             continue
         if (d / "_index.md").is_file():
             return True
-    # 兜底：根 index.md 若由脚本生成会是 `# Index\n\n## Areas` 结构；
-    # 出现 Obsidian 导航标题（如 `# Wiki Index` / `## AI Coding`）也判为 repository。
     idx = wiki / "index.md"
     if idx.is_file():
-        head = read_utf8(idx)[:200]
-        if "# index" not in head.lower():
-            return True
+        return not re.search(r"^##\s+\S", read_utf8(idx), re.M)
     return False
 
 
-def layout(vault: Path, type_folders: dict | None = None) -> dict:
-    """返回 vault 的目录/文件布局。所有值基于 vault 根，是 Path。
-
-    type_folders：可选，覆盖 DEFAULT_TYPE_FOLDERS（对齐 dsh-obsidian 的
-    config.typeFolders 合并逻辑——非 generic 模式（repository/sitemap/…）的自定义路由）。
-    """
+def layout(vault: Path) -> dict:
+    """返回 vault 的目录/文件布局。所有值基于 vault 根，是 Path。"""
     vault = Path(vault)
-    merged = {**DEFAULT_TYPE_FOLDERS, **(type_folders or {})}
     return {
         "vault": vault,
         "wiki": vault / "wiki",
@@ -280,8 +262,31 @@ def layout(vault: Path, type_folders: dict | None = None) -> dict:
         "index": vault / "wiki" / "index.md",
         "hot": vault / "wiki" / "hot.md",
         "log": vault / "wiki" / "log.md",
-        "type_folders": merged,
     }
+
+
+def is_safe_type(type_: str) -> bool:
+    """type 必须是单个不含路径分隔符的标记：它会被折成目录名（`wiki/<复数>`）。"""
+    t = (type_ or "").strip()
+    if not t or t in (".", ".."):
+        return False
+    return not re.search(r'[\\/\x00]', t)
+
+
+def parse_type_folders(s: str | None) -> dict | None:
+    """解析 `"type=wiki/目录;type2=wiki/目录2"`。空返回 None；格式非法抛 ValueError。"""
+    if not s:
+        return None
+    tf: dict = {}
+    for kv in s.split(";"):
+        kv = kv.strip()
+        if not kv:
+            continue
+        if "=" not in kv:
+            raise ValueError(f"bad --type_folders item (need key=value): {kv}")
+        k, v = kv.split("=", 1)
+        tf[k.strip()] = v.strip()
+    return tf
 
 
 def route_folder(vault: Path, type_: str, type_folders: dict | None = None) -> Path:
@@ -295,6 +300,16 @@ def route_folder(vault: Path, type_: str, type_folders: dict | None = None) -> P
     return Path(vault) / "wiki" / pluralize_type(type_)
 
 
+# 扫描时跳过的目录（隐藏目录另按前缀跳过）：机器/缓存/来源区，均非内容页
+SKIP_DIR_NAMES = frozenset({"meta", "raw", ".raw", "node_modules", ".git", ".obsidian", "inbox"})
+
+# 链接语法（全工具链唯一一份）：
+#   [[目标]] / [[目标|别名]] / [[目标#标题]] / ![[嵌入]]
+WIKILINK_RE = re.compile(r"!?\[\[([^\]|#]+)(?:[#|][^\]]*)?\]\]")
+#   [文字](相对路径.md) 或 [文字](./路径.md#标题)
+MDLINK_RE = re.compile(r"\[[^\]]*\]\(([^)]+\.md)(?:#[^)]*)?\)", re.IGNORECASE)
+
+
 def walk_md(root: Path, include_index: bool = False):
     """递归列出 .md，跳过隐藏/机器/缓存目录。
 
@@ -305,39 +320,109 @@ def walk_md(root: Path, include_index: bool = False):
     root = Path(root)
     if not root.is_dir():
         return
-    skip = frozenset({"meta", "raw", ".raw", "node_modules", ".git", ".obsidian", "inbox"})
     for entry in root.rglob("*.md"):
         try:
             rel = entry.relative_to(root)
         except ValueError:
             continue
-        if any(part in skip or part.startswith(".") for part in rel.parts):
+        if any(part in SKIP_DIR_NAMES or part.startswith(".") for part in rel.parts):
             continue
         if not include_index and is_index_page(entry.stem):
             continue
         yield entry
 
 
+def link_name(target: str) -> str:
+    """把链接目标归一成可匹配的页面标题（去掉目录前缀 / 扩展名 / 锚点）。"""
+    name = target.replace("\\", "/").rsplit("/", 1)[-1]
+    name = re.sub(r"\.md$", "", name, flags=re.IGNORECASE)
+    return name.split("#", 1)[0].split("|", 1)[0].strip()
+
+
+def extract_links(body: str) -> set[str]:
+    """抽取一段 markdown 里的出链目标（去重，返回标题名）。"""
+    links: set[str] = set()
+    for m in WIKILINK_RE.finditer(body):
+        t = link_name(m.group(1))
+        if t:
+            links.add(t)
+    for m in MDLINK_RE.finditer(body):
+        t = link_name(m.group(1))
+        if t:
+            links.add(t)
+    return links
+
+
+def linkable_names(vault: Path) -> dict[str, str]:
+    """全库可被 `[[…]]` 指向的名字 → 规范写法（小写键），供写入侧与检查侧共用。
+
+    覆盖三处，三处都是合法链接目标：
+    - 内容页（含 repository 模式的 `_index.md`）的文件名与 frontmatter `title`；
+    - 机器页 basename（index/log/hot/readme）——即使文件不存在也预登记；
+    - 上述各页的 frontmatter `title`。
+    写入侧用它判定 `unresolvedLinks`，检查侧用它判定 `dead-link`，两边必须同一份。
+    """
+    wiki_dir = Path(vault) / "wiki"
+    out: dict[str, str] = {}
+
+    def add(name) -> None:
+        if name:
+            out.setdefault(str(name).lower(), str(name))
+
+    for m in MACHINERY_BASENAMES:
+        add(m)
+    if not wiki_dir.is_dir():
+        return out
+    for md in walk_md(wiki_dir, include_index=True):
+        add(md.stem)
+        fm, _ = parse_frontmatter(read_utf8(md))
+        add(fm.get("title"))
+    return out
+
+
 # ────────────────────────────────────────────────────────────────────────────
 # frontmatter
 # ────────────────────────────────────────────────────────────────────────────
 def parse_frontmatter(text: str):
-    """返回 (fm, body)。fm 为 dict（列表项→list，其余→str）。无 frontmatter 返回 ({}, text)。"""
+    """返回 (fm, body)。fm 为 dict（列表项→list，其余→str）。无 frontmatter 返回 ({}, text)。
+
+    两种列表写法都解析成 list：flow（`tags: [a, b]`）与 block（`tags:` 换行 + `  - a`）。
+    只认 flow 会把 block 列表读成空串，序列化回去时**整段列表项被删掉**——
+    手写的 frontmatter 一旦经 wiki-write 更新就丢数据。
+    """
     m = _FM_RE.match(text)
     if not m:
         return {}, text
     fm = {}
-    for line in m.group(1).splitlines():
+    lines = m.group(1).splitlines()
+    i = 0
+    while i < len(lines):
+        line = lines[i]
         idx = line.find(":")
         if idx < 0:
+            i += 1
             continue
         key = line[:idx].strip()
         val = line[idx + 1:].strip()
         if val.startswith("[") and val.endswith("]"):
             items = val[1:-1].split(",")
             fm[key] = [x.strip().strip("\"'") for x in items if x.strip()]
-        else:
-            fm[key] = val.strip("\"'")
+            i += 1
+            continue
+        # block 列表：紧随其后的 `- item` 行都属于本键（缩进可为 0，YAML 允许）
+        items = []
+        j = i + 1
+        while j < len(lines) and re.match(r"^\s*-\s", lines[j]):
+            item = lines[j].split("-", 1)[1].strip().strip("\"'")
+            if item:
+                items.append(item)
+            j += 1
+        if items:
+            fm[key] = items
+            i = j
+            continue
+        fm[key] = val.strip("\"'")
+        i += 1
     return fm, text[m.end():]
 
 
@@ -420,20 +505,21 @@ def append_log(log_file: Path, line: str) -> None:
     log_file.write_text(md, encoding="utf-8")
 
 
-def collect_unresolved_links(body: str, known_titles: set) -> list[str]:
-    """返回正文里引用但尚不存在的 [[页面名]] 目标（去重）。"""
-    link_re = re.compile(r"!?\[\[([^\]|#]+)(?:[#|][^\]]*)?\]\]")
+def collect_unresolved_links(body: str, known_lower: set) -> list[str]:
+    """返回正文里引用但尚不存在的 [[页面名]] 目标（去重）。
+
+    known_lower 用 `linkable_names()` 的键集（小写），与 lint 的 dead-link 判定同源，
+    否则写入侧会报「链接不存在」而检查侧不报，Agent 会去建重复页。
+    """
     out = []
     seen = set()
-    for m in link_re.finditer(body):
+    for m in WIKILINK_RE.finditer(body):
         target = m.group(1).strip()
-        if target and target not in known_titles and target not in seen:
-            seen.add(target)
+        key = target.lower()
+        if target and key not in known_lower and key not in seen:
+            seen.add(key)
             out.append(target)
     return out
-
-
-_WIKILINK_NAME_RE = re.compile(r"!?\[\[([^\]|#]+)(?:[#|][^\]]*)?\]\]")
 
 
 def _replace_wikilink_targets(text: str, old_title: str, new_title: str) -> tuple[str, int]:
@@ -442,22 +528,10 @@ def _replace_wikilink_targets(text: str, old_title: str, new_title: str) -> tupl
     返回 (新文本, 替换次数)。仅替换目标名完全等于 old_title 的链接，不影响其它页面。
     Embed ![[旧名]] 同样处理。
     """
-    count = 0
-
-    def repl(m: re.Match) -> str:
-        nonlocal count
-        full = m.group(0)
-        target = m.group(1)
-        # 剩余部分：可能是 |alias 或 #section 或空
-        rest = full[len(m.group(0)) - len(m.group(0)):]  # placeholder, replaced below
-        count += 1
-        return full.replace(target, new_title, 1)
-
-    # 更稳妥：直接重建
     out = []
     last = 0
     count = 0
-    for m in _WIKILINK_NAME_RE.finditer(text):
+    for m in WIKILINK_RE.finditer(text):
         target = m.group(1)
         # 目标名去掉前后空格后精确等于 old_title 才替换
         if target.strip() == old_title:
@@ -473,13 +547,38 @@ def _replace_wikilink_targets(text: str, old_title: str, new_title: str) -> tupl
     return "".join(out), count
 
 
+def _set_frontmatter_title(raw: str, new_title: str) -> str:
+    """只改 frontmatter 里的 `title:` 行，其余字节原样保留；无 title 行则插到最前。
+
+    改名不该重排一个它没在编辑的 frontmatter：走 parse→serialize 会把嵌套结构折平、
+    把 block 列表改成 flow、把 CRLF 统一成 LF，产生一片与改名无关的 diff。
+    """
+    m = _FM_RE.match(raw)
+    if not m:
+        return raw
+    val = new_title
+    if ":" in val or val.startswith("[") or val.startswith("{"):
+        val = '"' + val.replace('"', '\\"') + '"'
+    line = f"title: {val}"
+    block, n = re.subn(r"(?im)^[ \t]*title[ \t]*:.*$", line, m.group(1), count=1)
+    if not n:
+        block = line + "\n" + block
+    return raw[:m.start(1)] + block + raw[m.end(1):]
+
+
 def _sync_links_after_rename(vault: Path, old_title: str, new_title: str) -> list[str]:
-    """扫描全库 .md（含 index/log），把 [[旧名]] 替换为 [[新名]]，返回被改的文件列表。"""
+    """扫描全库 .md，把 [[旧名]] 替换为 [[新名]]，返回被改的文件列表。
+
+    跳过 log.md：log 是审计轨迹，重命名后由 `rename_page` 追加一条 `renamed` 记录，
+    历史行要保留旧名（与 `_sync_links_after_delete` 同一理由，否则历史被改写）。
+    """
     changed = []
     wiki_dir = vault / "wiki"
     if not wiki_dir.is_dir():
         return changed
     for md in walk_md(wiki_dir):
+        if md.name.lower() == "log.md":
+            continue
         raw = read_utf8(md)
         new_raw, n = _replace_wikilink_targets(raw, old_title, new_title)
         if n > 0:
@@ -546,12 +645,14 @@ def _find_page(vault: Path, title: str) -> Path | None:
 
 
 def rename_page(vault: Path, old_title: str, new_title: str,
-                type_folders: dict | None = None, sync_refs: bool = True) -> dict:
+                sync_refs: bool = True) -> dict:
     """重命名一页（镜像 dsh-obsidian 的 renamePage + wiki_rename tool）。
 
     拒绝机器页（index/hot/log/readme/Lint Report*），拒绝非可移植文件名。
-    全库定位旧页（repository 模式任意分区目录），改为新文件名。
-    sync_refs=True（默认）时，同步全库正文与 index 里的 [[旧名]] → [[新名]] 引用。
+    全库定位旧页（repository 模式任意分区目录），改为新文件名，并同步页内
+    frontmatter `title`（否则文件名与 title 长期不一致，检索/引用读到两个名字）。
+    sync_refs=True（默认）时，同步全库正文与 index 里的 [[旧名]] → [[新名]] 引用，
+    并追加一条 log 记账（log 里的历史行保持旧名不改写）。
     """
     old_name = safe_filename(old_title)
     new_name = safe_filename(new_title)
@@ -568,29 +669,32 @@ def rename_page(vault: Path, old_title: str, new_title: str,
 
     src.rename(dst)
 
+    # 同步页自身的 title（不动其余 frontmatter 字节；本来就没 frontmatter 的页不凭空造）
+    dst.write_text(_set_frontmatter_title(read_utf8(dst), new_title), encoding="utf-8")
+
     result: dict = {"from": str(src), "to": str(dst)}
     if sync_refs and old_title != new_title:
-        synced = _sync_links_after_rename(vault, old_title, new_title)
-        result["syncedLinks"] = synced
+        result["syncedLinks"] = _sync_links_after_rename(vault, old_title, new_title)
+    append_log(layout(vault)["log"], f"renamed [[{old_title}]] -> [[{new_title}]]")
     return result
 
 
-def delete_page(vault: Path, title: str, type_folders: dict | None = None) -> dict:
+def delete_page(vault: Path, title: str) -> dict:
     """删除一页（镜像 dsh-obsidian deletePage）。拒绝机器页。
 
     全库定位页面（repository 模式任意分区目录）并删除，随后同步清理全库
     （含 index/hot 与各类型页正文）对该页的 [[引用]]，并追加 log 记账，
     避免留下指向已删页的死链（原实现只 unlink、不清理引用）。
+    引用匹配用**原始标题**（作者写的 `[[A/B]]`），不是 `safe_filename(A/B)`="A-B"。
     """
-    name = safe_filename(title)
-    if is_machinery(name):
+    if is_machinery(safe_filename(title)):
         raise ValueError("refusing to delete machinery page")
     p = _find_page(vault, title)
     if p is None:
         raise FileNotFoundError(f"not found: {title}")
     p.unlink()
-    synced = _sync_links_after_delete(vault, name)
-    append_log(layout(vault, type_folders)["log"], f"deleted [[{name}]]")
+    synced = _sync_links_after_delete(vault, title)
+    append_log(layout(vault)["log"], f"deleted [[{title}]]")
     result = {"deleted": str(p)}
     if synced:
         result["syncedLinks"] = synced

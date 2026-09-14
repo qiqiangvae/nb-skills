@@ -2,10 +2,11 @@
 """wiki-rename.py — 重命名/删除一页（镜像 dsh-obsidian 的 wiki_rename / deletePage）。
 
 零第三方依赖。拒绝机器页（index/hot/log/readme/Lint Report*），拒绝非可移植文件名。
-在所有有效的 type 目录里定位旧页并改名/删除，支持 --type_folders 自定义路由。
+全库定位页面（repository 模式任意分区目录），改名默认同步全库 [[旧名]] → [[新名]] 引用
+并同步页内 frontmatter title；改名/删除都会追加一条 log 记账。
 
 用法：
-  python3 wiki-rename.py <vault> --old "旧标题" --new "新标题" [--type_folders "project=wiki/projects"]
+  python3 wiki-rename.py <vault> --old "旧标题" --new "新标题"
   python3 wiki-rename.py <vault> --delete "标题"
 """
 
@@ -23,21 +24,6 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import wiki_lib as lib
 
 
-def parse_type_folders(s: str | None) -> dict | None:
-    if not s:
-        return None
-    tf: dict = {}
-    for kv in s.split(";"):
-        kv = kv.strip()
-        if not kv:
-            continue
-        if "=" not in kv:
-            raise ValueError(f"bad --type_folders item: {kv}")
-        k, v = kv.split("=", 1)
-        tf[k.strip()] = v.strip()
-    return tf
-
-
 def main(argv=None) -> int:
     for stream in (sys.stdout, sys.stderr):
         try:
@@ -52,8 +38,6 @@ def main(argv=None) -> int:
     p.add_argument("--delete", default=None, help="title to delete")
     p.add_argument("--no-sync-refs", action="store_true",
                    help="do NOT rewrite [[old]] -> [[new]] references across the vault (default rewrites)")
-    p.add_argument("--type_folders", default=None,
-                   help='semicolon-separated type->dir overrides, e.g. "project=wiki/projects"')
     args = p.parse_args(argv)
 
     vault = lib.ensure_vault_path(args.vault, require_wiki=True)
@@ -73,13 +57,12 @@ def main(argv=None) -> int:
         return 2
 
     try:
-        tf = parse_type_folders(args.type_folders) or lib.resolve_type_folders()
         if args.delete:
-            out = lib.delete_page(vault, args.delete, tf)
+            out = lib.delete_page(vault, args.delete)
         else:
             if not args.old or not args.new:
                 p.error("provide --old/--new (rename) or --delete (delete)")
-            out = lib.rename_page(vault, args.old, args.new, tf, sync_refs=not args.no_sync_refs)
+            out = lib.rename_page(vault, args.old, args.new, sync_refs=not args.no_sync_refs)
     except (ValueError, FileNotFoundError, FileExistsError) as e:
         print(json.dumps({"error": str(e)}, ensure_ascii=False), file=sys.stderr)
         return 2

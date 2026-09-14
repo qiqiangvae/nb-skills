@@ -16,21 +16,7 @@
 | `light-weight-wiki-config.py` | 查看/设置 vaultPath 与 typeFolders | （原版 cordis 配置） |
 | `selftest.py` | 回归自检（改过脚本就跑一遍，零依赖） | — |
 
-```bash
-SKILL_DIR=<本 skill（light-weight-wiki）所在目录>
-SCAFFOLD="$SKILL_DIR/scripts/wiki-scaffold.py"
-WRITE="$SKILL_DIR/scripts/wiki-write.py"
-SEARCH="$SKILL_DIR/scripts/wiki-search.py"
-LINT="$SKILL_DIR/scripts/wiki-lint.py"
-RENAME="$SKILL_DIR/scripts/wiki-rename.py"
-CONFIG="$SKILL_DIR/scripts/light-weight-wiki-config.py"
-```
-
-从本 skill 目录解析，勿从 cwd 或 vault 猜。脚本与 `wiki_lib.py` 需一起拷贝。
-
-**vault 路径来源**（所有脚本一致）：命令行参数 > `LIGHTWEIGHT_WIKI_VAULT` 环境变量 >
-`~/.config/light-weight-wiki/config.json` > 交互询问（TTY 时主动询问并写入配置）。
-建议先 `python3 "$CONFIG" --vault /abs/path` 设置一次，之后免传路径。
+脚本路径变量（`$SCAFFOLD`/`$WRITE`/`$SEARCH`/`$LINT`/`$RENAME`/`$CONFIG`）与 vault 路径解析优先级见 `SKILL.md`「公共前置」；从本 skill 目录解析，勿从 cwd 或 vault 猜。脚本与 `wiki_lib.py` 需一起拷贝。
 
 ## 何时建库
 
@@ -40,13 +26,13 @@ CONFIG="$SKILL_DIR/scripts/light-weight-wiki-config.py"
 ## 运行
 
 ```bash
-python3 "$SCAFFOLD" "<vault>"               # 先 dry-run：只打印计划，不改盘
+python3 "$SCAFFOLD" "<vault>"               # 先 dry-run：只打印计划，不改盘（目录还不存在也能跑）
 python3 "$SCAFFOLD" "<vault>" --apply       # 真正创建目录 + index/hot/log/Inbox
 python3 "$SCAFFOLD" "<vault>" --apply --template research   # 额外建 Research Questions.md
 ```
 
 - **默认 dry-run**，输出 `{"dry_run":true, "create":[...], "write":[...]}`；用 `--apply` 才写盘。
-- 模板：`default`（标准）、`minimal`（最小）、`research`（外加 `Research Questions.md`）。
+- 模板：`default`（标准）、`research`（外加 `Research Questions.md`）。
 - 已存在的目录/文件会被跳过（`skipped`），**不会覆盖**已有内容。
 
 ## 它会创建什么
@@ -59,9 +45,21 @@ python3 "$SCAFFOLD" "<vault>" --apply --template research   # 额外建 Research
 <vault>/inbox/Inbox.md # 临时收集，待整理
 ```
 
-- `index.md` 预置小写分节：`## areas` `## projects` `## resources` `## sources`（与 `wiki-write.py` 记账一致，避免重复空节）。
-- `hot.md` 近期上下文缓存（`wiki-search.py --quick` 读它）；`log.md` 变更流水（`wiki-write.py` 追加）。
+- `index.md` 预置分节 `## Areas` `## Projects` `## Resources` `## Sources`（首字母大写，与 `wiki-write.py` 记账的分节名一致，避免同一分区裂成两个分节）。
+- `hot.md` 近期上下文缓存（`wiki-search.py --quick` 读它）；`log.md` 变更流水（写入/改名/删页都会追加）。
 - **机器页**（`index`/`hot`/`log`/`readme`/`Lint Report*`）由系统管理，不可覆盖/改名/删除。
+
+## 改名 / 删页
+
+```bash
+python3 "$RENAME" "<vault>" --old "旧标题" --new "新标题"   # 改名：页内 title、全库 [[旧名]]、log 一起同步
+python3 "$RENAME" "<vault>" --old "旧标题" --new "新标题" --no-sync-refs   # 只改文件名与 title，不动引用
+python3 "$RENAME" "<vault>" --delete "标题"                # 删页：连同全库对它的 [[引用]] 一起清理
+```
+
+- 全库定位页面（repository 模式的任意分区目录都能找到），拒绝机器页。
+- 两个动作都追加 log；log 里的**历史行保留旧名**（审计轨迹不被就地改写）。
+- 删页、或改名的目标名可能被其它页引用时，**先跟用户确认**（见 [wiki-lint.md](wiki-lint.md)「边界」）。
 
 ## 分派
 

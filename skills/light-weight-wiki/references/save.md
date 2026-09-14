@@ -19,13 +19,14 @@
 3. **正文**：精简。用户说了可引用的话，用 `> quote` 块 + `**Source:** conversation, YYYY-MM-DD`。
 4. **写入**：用 `../scripts/wiki-write.py`：
    ```bash
+   SEARCH="$SKILL_DIR/scripts/wiki-search.py"; WRITE="$SKILL_DIR/scripts/wiki-write.py"   # SKILL_DIR 为本 skill 根目录
    python3 "$SEARCH" "<vault>" "<主题>" --top 3   # 先查重
    python3 "$WRITE" "<vault>" \
        --title "<标题>" --type resource --content "<正文>" \
        --source_path conversation [--tags 对话,洞察]
    ```
    `--source_path conversation` 记录来源，但**不产真实文件哈希**（无哈希去重副作用）。
-5. **确认**：把落盘路径和新增的 master index 条目告诉用户。
+5. **确认**：把落盘路径、`index.md` 里新增的分节条目（若该库不是 repository 模式）和 `unresolvedLinks` 告诉用户。
 
 ## 不要
 

@@ -24,19 +24,6 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import wiki_lib as lib
 
 
-def parse_type_folders(s: str) -> dict:
-    tf: dict = {}
-    for kv in s.split(";"):
-        kv = kv.strip()
-        if not kv:
-            continue
-        if "=" not in kv:
-            raise ValueError(f"bad item (need key=value): {kv}")
-        k, v = kv.split("=", 1)
-        tf[k.strip()] = v.strip()
-    return tf
-
-
 def main(argv=None) -> int:
     for stream in (sys.stdout, sys.stderr):
         try:
@@ -58,7 +45,11 @@ def main(argv=None) -> int:
         cfg["vaultPath"] = os.path.abspath(args.vault)
         changed = True
     if args.type_folders is not None:
-        cfg["typeFolders"] = parse_type_folders(args.type_folders)
+        try:
+            cfg["typeFolders"] = lib.parse_type_folders(args.type_folders)
+        except ValueError as e:
+            print(json.dumps({"error": str(e)}, ensure_ascii=False), file=sys.stderr)
+            return 2
         changed = True
     if args.unset_vault:
         cfg.pop("vaultPath", None)

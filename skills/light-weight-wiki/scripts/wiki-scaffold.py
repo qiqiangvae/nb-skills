@@ -76,7 +76,7 @@ def main(argv=None) -> int:
     p.add_argument("vault", nargs="?", default=None,
                    help="vault root; omit to use LIGHTWEIGHT_WIKI_VAULT / config.json")
     p.add_argument("--apply", action="store_true")
-    p.add_argument("--template", choices=["default", "minimal", "research"], default="default")
+    p.add_argument("--template", choices=["default", "research"], default="default")
     args = p.parse_args(argv)
 
     vault = lib.ensure_vault_path(args.vault, require_wiki=False)
@@ -85,10 +85,7 @@ def main(argv=None) -> int:
                                     "or run light-weight-wiki-config.py --vault <path>"},
                          ensure_ascii=False), file=sys.stderr)
         return 2
-    if not vault.is_dir() and not args.apply:
-        print(json.dumps({"error": f"vault is not a directory: {vault}"},
-                         ensure_ascii=False), file=sys.stderr)
-        return 2
+    # 目标目录不存在也照常出 dry-run 计划（建新库的主路径：先看计划，再 --apply 创建）
 
     pl = plan(vault, args.template)
     if not args.apply:

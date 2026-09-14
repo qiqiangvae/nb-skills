@@ -27,14 +27,10 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import wiki_lib as lib
 
-WIKILINK_RE = re.compile(r"!?\[\[([^\]|#]+)(?:[#|][^\]]*)?\]\]")
-MDLINK_RE = re.compile(r"\[[^\]]*\]\(([^)]+\.md)(?:#[^)]*)?\)", re.IGNORECASE)
-
-
-def link_name(target: str) -> str:
-    name = target.replace("\\", "/").rsplit("/", 1)[-1]
-    name = re.sub(r"\.md$", "", name, flags=re.IGNORECASE)
-    return name.split("#", 1)[0].split("|", 1)[0].strip()
+# 链接语法与「已知链接目标」都只有一份实现（在 wiki_lib）：lint 与 wiki-write 的
+# dead-link / unresolvedLinks 必须同源，否则两边对同一页给出矛盾的结论。
+link_name = lib.link_name
+page_links = lib.extract_links
 
 
 def empty_sections(body: str) -> list[str]:
@@ -65,19 +61,6 @@ def empty_sections(body: str) -> list[str]:
     return out
 
 
-def page_links(body: str) -> set[str]:
-    s = set()
-    for m in WIKILINK_RE.finditer(body):
-        t = m.group(1).strip()
-        if t:
-            s.add(link_name(t))
-    for m in MDLINK_RE.finditer(body):
-        t = m.group(1).strip()
-        if t:
-            s.add(link_name(t))
-    return s
-
-
 def main(argv=None) -> int:
     for stream in (sys.stdout, sys.stderr):
         try:
@@ -104,14 +87,12 @@ def main(argv=None) -> int:
         return 2
 
     issues = []
-    by_title = {}
     title_count = Counter()
     for p in lib.walk_md(wiki_dir):
         name = p.stem
         if lib.is_machinery(name):
             continue
         title_count[name] += 1
-        by_title.setdefault(name, p)
 
     # 重复文件名
     for name, n in title_count.items():
@@ -120,30 +101,10 @@ def main(argv=None) -> int:
                            "file": name, "message": f'filename "{name}" used {n} times',
                            "suggestion": "merge or rename"})
 
-    titles = set(title_count.keys())
-    by_lower = {t.lower(): t for t in titles}
-
-    # 分区索引页（_index.md）不是内容页，但其标题是可链接目标：
-    # 内容页里 [[Projects Index]]、[[_index]] 指向它们是合法引用，不算死链。
-    for p in lib.walk_md(wiki_dir, include_index=True):
-        if not lib.is_index_page(p.stem):
-            continue
-        fm, _ = lib.parse_frontmatter(lib.read_utf8(p))
-        for cand in (fm.get("title"), p.stem):
-            if cand and cand.lower() not in by_lower:
-                by_lower[cand.lower()] = cand
-
-    # 机器页（index/log/hot/readme）也可被正文引用（如 [[index]]、[[Hot Cache]]），
-    # 用其 basename 与 frontmatter title 一起作为已知目标，不算死链。
-    for m in ("index", "log", "hot", "readme"):
-        p = wiki_dir / f"{m}.md"
-        if p.is_file():
-            fm, _ = lib.parse_frontmatter(lib.read_utf8(p))
-            for cand in (m, fm.get("title")):
-                if cand and cand.lower() not in by_lower:
-                    by_lower[cand.lower()] = cand
-        elif m not in by_lower:
-            by_lower[m] = m
+    # 已知链接目标（小写 → 规范写法）：内容页文件名、各页 frontmatter title、
+    # 分区 _index.md、机器页 index/log/hot/readme。与 wiki-write 的 unresolvedLinks
+    # 共用同一份实现，两边不会对同一条 [[链接]] 给出矛盾结论。
+    by_lower = lib.linkable_names(vault)
 
     inbound = defaultdict(set)
     for p in lib.walk_md(wiki_dir):

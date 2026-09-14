@@ -70,7 +70,7 @@ Windows 直接运行启动器（它自带 `-ExecutionPolicy Bypass`，**无需**
 ## 自研 skills
 
 - **coding-publish-skill** — 把本地项目发布到 GitHub / npm，内置「敏感内容审查」强制门禁，提交/发布前必须先扫密钥、令牌、PII、生产配置，避免泄露到公网。
-- **light-weight-wiki** — 把一个 Markdown 文件夹建成并维护成可检索的个人/项目知识库（LLM Wiki 工具链），并附配套能力。结构：`SKILL.md` 是**入口**（判断意图并分派 + 公共前置/护栏），`references/` 下**按原名**保留原 dsh-obsidian 各 skill 的中文分册——`wiki`(主入口/建库)、`wiki-ingest`(写入/记账)、`wiki-query`(检索/问答)、`wiki-lint`(健康检查)、`defuddle`(网页提净)、`save`(存洞察)、`think`(推理循环)、`obsidian-markdown`(OFM 语法)、`json-canvas`(.canvas)、`obsidian-bases`(.base)、`obsidian-cli`(需 Obsidian 运行)；`scripts/` 为零依赖 Python 标准库脚本：`wiki-scaffold.py`、`wiki-write.py`（frontmatter 补全、index/log 更新、文件名安全、机器页保护、来源哈希去重、未解析链接报告）、`wiki-search.py`（BM25 检索 + 链接图，分中文/日文 CJK n-gram 与英文）、`wiki-lint.py`（死链/孤儿/缺 frontmatter/失效 index）。Agent 负责内容，脚本负责记账；跨 agent 通用（不绑定 DSH）。
+- **light-weight-wiki** — 把一个 Markdown 文件夹建成并维护成可检索的个人/项目知识库（LLM Wiki 工具链），并附配套能力。结构：`SKILL.md` 是**入口**（判断意图并分派 + 公共前置/护栏），`references/` 下**按原名**保留原 dsh-obsidian 各 skill 的中文分册——`wiki`(主入口/建库)、`wiki-ingest`(写入/记账)、`wiki-query`(检索/问答)、`wiki-lint`(健康检查)、`defuddle`(网页提净)、`save`(存洞察)、`think`(推理循环)、`obsidian-markdown`(OFM 语法)、`json-canvas`(.canvas)、`obsidian-bases`(.base)、`obsidian-cli`(需 Obsidian 运行)；`scripts/` 为零依赖 Python 标准库脚本：`wiki-scaffold.py`、`wiki-write.py`（frontmatter 补全、index/log 更新、文件名安全、机器页保护、来源哈希去重、未解析链接报告）、`wiki-search.py`（BM25 检索 + 链接图，分中文/日文 CJK n-gram 与英文）、`wiki-lint.py`（死链/孤儿/缺 frontmatter/失效 index）、`wiki-rename.py`（改名/删页，同步页内 title 与全库引用）、`light-weight-wiki-config.py`（vaultPath/typeFolders）、`selftest.py`（回归自检）。Agent 负责内容，脚本负责记账；跨 agent 通用（不绑定 DSH）。
 
 ## 三方 skills
 

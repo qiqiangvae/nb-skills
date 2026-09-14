@@ -60,18 +60,11 @@ def main(argv=None) -> int:
     args = p.parse_args(argv)
 
     type_folders = None
-    if args.type_folders:
-        type_folders = {}
-        for kv in args.type_folders.split(";"):
-            kv = kv.strip()
-            if not kv:
-                continue
-            if "=" not in kv:
-                print(json.dumps({"error": f"bad --type_folders item: {kv}"},
-                                 ensure_ascii=False), file=sys.stderr)
-                return 2
-            k, v = kv.split("=", 1)
-            type_folders[k.strip()] = v.strip()
+    try:
+        type_folders = lib.parse_type_folders(args.type_folders)
+    except ValueError as e:
+        print(json.dumps({"error": str(e)}, ensure_ascii=False), file=sys.stderr)
+        return 2
 
     # vault 解析：命令行 > 环境变量 > 配置文件 > 交互询问（无障碍则报错）
     vault = lib.ensure_vault_path(args.vault, require_wiki=True)
@@ -84,7 +77,7 @@ def main(argv=None) -> int:
     if type_folders is None:
         type_folders = lib.resolve_type_folders()
     if not vault.is_dir():
-        print(json.dumps({"error": f"vault is not a directory: {args.vault}"},
+        print(json.dumps({"error": f"vault is not a directory: {vault}"},
                          ensure_ascii=False), file=sys.stderr)
         return 2
 
@@ -112,6 +105,11 @@ def main(argv=None) -> int:
         return 2
     if not lib.is_portable_filename(filename):
         print(json.dumps({"error": f"non-portable filename: {filename}"},
+                         ensure_ascii=False), file=sys.stderr)
+        return 2
+    # type 会折成目录名，含路径分隔符的 type 会在 vault 里造出任意层目录
+    if not lib.is_safe_type(args.type):
+        print(json.dumps({"error": f"bad --type (single path-free token expected): {args.type}"},
                          ensure_ascii=False), file=sys.stderr)
         return 2
 
@@ -155,12 +153,14 @@ def main(argv=None) -> int:
         **({"source": args.source_path} if args.source_path else {}),
         **({"source_hash": source_hash} if source_hash else {}),
     }, now)
+    if not content.endswith("\n"):
+        content += "\n"
     final = lib.serialize_frontmatter(fm) + content
     target.write_text(final, encoding="utf-8")
 
     # index + log 记账（使用合并后的 type 路由，而非默认值）
     log_line = f"{args.type} [[{args.title}]]" + (f" (source {args.source_path})" if args.source_path else "")
-    lib.append_log(lib.layout(vault, type_folders)["log"], log_line)
+    lib.append_log(lib.layout(vault)["log"], log_line)
     if lib.is_repository_vault(vault):
         # Obsidian repository 模式：分区导航（根 index.md / 各分区 _index.md）由人工维护，
         # 脚本只落盘 + log，不改动导航页，避免往精排的导航里塞机械条目。
@@ -169,18 +169,15 @@ def main(argv=None) -> int:
         # generic 扁平模式：脚本负责 index.md 的 ## Section 记账
         # 分节标题取页面**实际落点目录**名：只看 6 类型默认表会把 concept/decision 等
         # repository 类型兜底成 Resources，导致 index 分节和页面所在目录对不上。
-        section_heading = lib.route_folder(vault, args.type, type_folders).name
+        section_heading = folder.name
         # 统一首字母大写，与 scaffold 生成的 ## Areas/## Projects 分节一致（避免小写分节分裂）
         section_heading = section_heading[:1].upper() + section_heading[1:] if section_heading else section_heading
-        lib.upsert_index_entry(lib.layout(vault, type_folders)["index"], args.type, section_heading, args.title)
+        lib.upsert_index_entry(lib.layout(vault)["index"], args.type, section_heading, args.title)
         indexed = True
 
-    # 前向链接报告
-    known = set()
-    wiki_dir = lib.layout(vault, type_folders)["wiki"]
-    for md in lib.walk_md(wiki_dir):
-        known.add(md.stem)
-    known.add(args.title)
+    # 前向链接报告：已知名字与 lint 的 dead-link 判定同源（含 _index / 机器页 / fm title），
+    # 否则写入侧报「不存在」而检查侧不报，Agent 会去建重复页。
+    known = set(lib.linkable_names(vault))
     unresolved = lib.collect_unresolved_links(content, known)
 
     action = "updated" if existing_body else "created"
