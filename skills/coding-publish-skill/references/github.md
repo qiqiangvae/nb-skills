@@ -1,33 +1,18 @@
 # GitHub 发布流程
 
-本文件是 `coding-publish-skill` 的 GitHub 分支。**前置**：已完成主 `SKILL.md` 里的「公共前置」（版本号确认 + 认证预探测 + **敏感内容审查** + 公共提交打 tag）。以下从「检查/推送」开始。
-
-> 推送前务必确认敏感内容审查（`references/sensitive-content.md`）已通过——这是不可跳过的门禁。
+本文件是 `coding-publish-skill` 的 GitHub 分支。**前置**：主 `SKILL.md`「公共前置」A–C（版本号确认 + 预探测 + **敏感内容审查**）已完成；§1 排在 C 之后、D 之前，§2 起排在 D 之后。敏感审查的权威清单在 [`sensitive-content.md`](sensitive-content.md)，推送前确认它已放行。
 
 目标交付物：提交 + annotated tag + GitHub Release。三者都要逐项核验。
 
 ---
 
-## 1. 发布前检查与提交
+## 1. 远程仓库与历史对齐（排在主 `SKILL.md` 的 C 之后、D 之前）
 
-这些公共动作在主 `SKILL.md`「公共前置 C」完成，此处仅核验：
-
-```bash
-git status --short          # 应为空
-git log --oneline --decorate -5
-git remote -v
-git show-ref --heads --tags
-```
-
-**完成标准**：`git status --short` 无输出，目标提交含正确版本号，已有 annotated tag。
-
----
-
-## 2. 创建或检查远程仓库
+主 `SKILL.md` §D 会把 tag 打在「当时的 HEAD」上，所以先把远程历史接上，D 之后就不必再迁移 tag。
 
 必要时通过 GitHub 工具或网页创建空仓库。不要索取或接收密码、PAT 或 SSH 私钥。
 
-若远程仓库已通过 README 初始化，先拉取并合并两段历史：
+**若远程仓库已被 README 初始化**（`git ls-remote --heads origin` 有输出），先接上两段历史（这一步会产生一个合并提交），再回到主 `SKILL.md` §D 做提交与打 tag：
 
 ```bash
 git fetch origin main
@@ -37,6 +22,21 @@ git merge origin/main --allow-unrelated-histories -m 'chore: initialize GitHub r
 出现 README 冲突时保留项目自己的 README，再完成合并提交。
 
 **完成标准**：`git log --all --decorate` 显示本地与远程历史进入同一提交图。
+
+---
+
+## 2. 推送前核验
+
+公共提交与打 tag 已在主 `SKILL.md` §D 完成，此处只核验：
+
+```bash
+git status --short          # 应为空
+git log --oneline --decorate -5
+git remote -v
+git show-ref --heads --tags
+```
+
+**完成标准**：`git status --short` 无输出，目标提交含正确版本号，已有 annotated tag。
 
 ---
 
@@ -78,7 +78,7 @@ git send-pack --verbose \
 
 `send-pack` 输出必须同时含 `main -> main` 与 `vX.Y.Z -> vX.Y.Z` 的成功更新记录。
 
-**推送后务必核验远程引用**（push 被截断/静默失败时尤其重要）：
+**推送后务必核验远程引用**（push 被截断 / 静默失败时尤其重要）：
 
 ```bash
 git ls-remote --heads --tags git@github.com:OWNER/REPOSITORY.git
@@ -92,9 +92,9 @@ git ls-remote origin refs/tags/vX.Y.Z refs/tags/vX.Y.Z^{}
 
 ## 4. 创建 GitHub Release
 
-推送 tag **不会**自动创建 Release。
+推送 tag **不会**自动创建 Release。release notes 一律先写文件、写进 `/tmp/`（不写进项目目录，以免污染仓库），再用 `--notes-file`。
 
-### 4.1 判断能否自动化（依据主 SKILL.md 的认证预探测）
+### 4.1 判断能否自动化（依据主 SKILL.md 的预探测）
 
 - ✅ **可自动**：`gh` 已登录，或 `GH_TOKEN`/`GITHUB_TOKEN` 长度非 0 → 走 4.2。
 - ❌ **不可自动**（未登录且无 token）→ **不要索取 token**，走 4.3「交给用户」。
@@ -102,8 +102,6 @@ git ls-remote origin refs/tags/vX.Y.Z refs/tags/vX.Y.Z^{}
 > GitHub MCP 工具 release 能力不可靠：常见 MCP 凭据只提供只读 `get_*`/`list_releases`，**没有 create release**。别假设它能创建。
 
 ### 4.2 自动创建（gh 已认证）
-
-release notes 一律先写文件（写入 `/tmp/`，**不写进项目目录**），再用 `--notes-file`：
 
 ```bash
 cat > /tmp/release-notes-vX.Y.Z.md <<'EOF'
@@ -118,13 +116,11 @@ gh release create vX.Y.Z \
   --notes-file /tmp/release-notes-vX.Y.Z.md
 ```
 
-> **健壮写法**：内联 `--notes '...'` 用单引号包裹时正文内不得再出现单引号，否则截断。内容变长或含反引号 `` ` `` 时必须用 `--notes-file`。
-
 ### 4.3 交给用户（未认证）
 
 最常见的收尾场景，做到「用户拿来即用」，交付**三件套**：
 
-1. **notes 文件**：把 release 内容用 write 工具写到 `/tmp/release-notes-vX.Y.Z.md`（不写进项目目录）。
+1. **notes 文件**：把 release 内容用 write 工具写到 `/tmp/release-notes-vX.Y.Z.md`。
 2. **一条可直接执行的命令**（bash 多行 + fish 单行两种形态都给）：
 
    ```bash
@@ -176,9 +172,9 @@ gh release view vX.Y.Z --repo OWNER/REPOSITORY --json url,tagName,targetCommitis
 
 ---
 
-## 5. tag 需要迁移时的兜底（Release tag 必须指向最终提交）
+## 5. tag 需要迁移时的兜底
 
-若合并或最终修复发生在打 tag 之后，先在本地移动带注释标签，再仅强推该 tag：
+§1 已把远程历史对齐前置，所以正常路径不该走到这里；只有合并或最终修复确实发生在打 tag 之后时，才在本地移动带注释标签，再仅强推该 tag：
 
 ```bash
 git tag -d vX.Y.Z
@@ -186,10 +182,11 @@ git tag -a vX.Y.Z -m 'vX.Y.Z' HEAD
 git send-pack --verbose REMOTE_URL refs/tags/vX.Y.Z:refs/tags/vX.Y.Z
 ```
 
+**完成标准**：`git ls-remote origin refs/tags/vX.Y.Z^{}` 与发布提交一致。
+
 ---
 
 ## GitHub 特有经验
 
-- GitHub MCP 凭据可能有仓库读取/写入权限，但不一定有创建仓库/PR/Release 权限，每项能力独立验证。
-- `gh` 要 `gh auth login` 或非空 `GH_TOKEN`；能走 SSH 的 key 不代表 CLI API 已认证。
+- 能走 Git SSH 的 SSH key **不代表** `gh` CLI API 已认证，两者独立判定。
 - 即使 Git SSH 可用，浏览器自动化会话仍可能未登录 GitHub；只有用户已登录浏览器时才操作受保护页面。
