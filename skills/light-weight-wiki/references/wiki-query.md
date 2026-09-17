@@ -1,7 +1,5 @@
 # wiki-query（检索 / 问答）
 
-> 原 dsh-obsidian skill `wiki-query`（工具 `wiki_query` → 脚本 `../scripts/wiki-search.py`），名字保留。
-
 回答知识库相关的问题并**带来源引用**。
 
 ## 前置

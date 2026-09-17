@@ -1,7 +1,5 @@
 # save（把洞察存回知识库）
 
-> 原 dsh-obsidian skill `save`（工具 `wiki_write`/`wiki_query` → 脚本 `../scripts/wiki-write.py`、`../scripts/wiki-search.py`），名字保留。
-
 把一次对话中的洞察持久化到知识库。**只读库默认不改**；本册仅在用户明确要求保存时写入。
 
 ## 何时用

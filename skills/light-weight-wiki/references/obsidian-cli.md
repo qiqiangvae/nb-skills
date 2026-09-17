@@ -1,6 +1,6 @@
 # obsidian-cli（控制运行中的 Obsidian）
 
-> 原 dsh-obsidian skill `obsidian-cli`，名字保留。**注意：这一册需要 Obsidian 应用在运行并启用 CLI**（Settings → General → Enable CLI），只在装好 Obsidian 及其 CLI 的环境可用，其余 agent/机器上会失效——其余分册才是跨 agent 通用的部分。
+> **注意：本册需要 Obsidian 应用在运行并启用 CLI**（Settings → General → Enable CLI），只在装好 Obsidian 及其 CLI 的环境可用。
 
 通过 `obsidian` CLI 与运行中的 Obsidian 实例对话：读、建、搜、管理笔记/任务/属性，以及插件/主题开发循环。
 

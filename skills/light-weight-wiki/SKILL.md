@@ -7,7 +7,7 @@ description: 把一组 Markdown 文件维护成可由 Agent 建、写、查、�
 
 把一个 Markdown 文件夹变成**可由 Agent 建、写、查、检**的轻量知识库，并附配套工具。零第三方依赖、纯 Python 标准库、跨 agent 通用。**Agent 负责内容与判断，脚本负责机械记账**（frontmatter、index/log、文件名安全、机器页保护、来源哈希去重）。
 
-> 结构：本 `SKILL.md` 是**入口**，只做「判断意图并分派」与公共前置；每个原能力的详细流程按**原名**放在 `references/` 一册一个；脚本在 `scripts/`。
+> 结构：本 `SKILL.md` 是**入口**，只做「判断意图并分派」与公共前置；每项能力的详细流程一册一个放在 `references/`；脚本在 `scripts/`。
 
 ## 你先做什么：判断意图并分派
 
@@ -22,7 +22,6 @@ description: 把一组 Markdown 文件维护成可由 Agent 建、写、查、�
 | 体检（死链/孤儿/缺信息/失效 index） | [references/wiki-lint.md](references/wiki-lint.md) |
 | 把网页提成干净正文（摄取 URL 前用） | [references/defuddle.md](references/defuddle.md) |
 | 把对话里的洞察存回知识库 | [references/save.md](references/save.md) |
-| 仔细推理 / 多步计划 / 结构化决策 | [references/think.md](references/think.md) |
 | 按 Obsidian Flavor Markdown 写 .md | [references/obsidian-markdown.md](references/obsidian-markdown.md) |
 | 生成 `.canvas` 视觉脑图/知识图谱 | [references/json-canvas.md](references/json-canvas.md) |
 | 生成 `.base` 表格/看板视图 | [references/obsidian-bases.md](references/obsidian-bases.md) |
@@ -64,7 +63,7 @@ python3 "$CONFIG" --type-folders 'project=wiki/projects;area=wiki/concepts'  # �
 python3 "$CONFIG"                                               # 查看当前配置
 ```
 
-> 配置文件同时承载 `vaultPath` 与 `typeFolders`，对齐 dsh-obsidian 的 `config.vaultPath` / `config.typeFolders`，但用跨 agent 通用的 JSON 文件而非 DSH 的 cordis 配置。
+> 配置文件同时承载 `vaultPath` 与 `typeFolders`，落在跨 agent 通用的 JSON 文件里。
 
 ## 目录约定
 

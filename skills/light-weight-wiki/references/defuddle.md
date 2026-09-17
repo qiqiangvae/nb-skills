@@ -1,6 +1,6 @@
 # defuddle（网页 → 干净正文）
 
-> 原 dsh-obsidian skill `defuddle`，名字保留。真正抽取由 [Defuddle](https://github.com/kepano/defuddle) 这个 **npm CLI / 包**完成；本册负责**指导 agent 去调用它**。
+> 真正抽取由 [Defuddle](https://github.com/kepano/defuddle) 这个 **npm CLI / 包**完成；本册负责**指导 agent 去调用它**。
 
 把网页清理成纯文章正文。
 

@@ -1,20 +1,20 @@
 # wiki（知识库主入口 / 建库）
 
-> 原 dsh-obsidian skill `wiki`，名字保留。本册是 wiki 四册的**主册**：建库 + 全套脚本总览。
+> 本册是 wiki 四册的**主册**：建库 + 全套脚本总览。
 
 把一个 Markdown 文件夹变成可检索的知识库。**Agent 负责内容与判断，脚本负责机械记账**。
 
 ## 脚本总览（托管在 `../scripts/`）
 
-| 脚本 | 用途 | 对应原工具 |
-| --- | --- | --- |
-| `wiki-scaffold.py` | 建库 / 补目录骨架 | `wiki_scaffold` |
-| `wiki-write.py` | 写入/更新一页并记账 | `wiki_write` |
-| `wiki-search.py` | BM25 检索 + 链接图 | `wiki_query` / `wiki_list`（`--list`） |
-| `wiki-lint.py` | 健康检查 | `wiki_lint` |
-| `wiki-rename.py` | 改名/删页（改名默认同步全库引用） | `wiki_rename` |
-| `light-weight-wiki-config.py` | 查看/设置 vaultPath 与 typeFolders | （原版 cordis 配置） |
-| `selftest.py` | 回归自检（改过脚本就跑一遍，零依赖） | — |
+| 脚本 | 用途 |
+| --- | --- |
+| `wiki-scaffold.py` | 建库 / 补目录骨架 |
+| `wiki-write.py` | 写入/更新一页并记账 |
+| `wiki-search.py` | BM25 检索 + 链接图（`--list` 列页面） |
+| `wiki-lint.py` | 健康检查 |
+| `wiki-rename.py` | 改名/删页（改名默认同步全库引用） |
+| `light-weight-wiki-config.py` | 查看/设置 vaultPath 与 typeFolders |
+| `selftest.py` | 回归自检（改过脚本就跑一遍，零依赖） |
 
 脚本路径变量（`$SCAFFOLD`/`$WRITE`/`$SEARCH`/`$LINT`/`$RENAME`/`$CONFIG`）与 vault 路径解析优先级见 `SKILL.md`「公共前置」；从本 skill 目录解析，勿从 cwd 或 vault 猜。脚本与 `wiki_lib.py` 需一起拷贝。
 

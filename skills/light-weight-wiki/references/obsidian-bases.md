@@ -1,7 +1,5 @@
 # obsidian-bases（Obsidian Bases 视图）
 
-> 原 dsh-obsidian skill `obsidian-bases`，名字保留。
-
 Obsidian Bases 是 `.base` YAML 文件（放在 vault 根或任意位置），定义"按属性筛选/分组"的表格或卡片视图。**写入是跨 agent 的**（就是写合法 YAML）；但只有 Obsidian 能渲染 `.base`，所以面对不用 Obsidian 的用户要先说明"写完的库只能在 Obsidian 里展开"。
 
 ## 最小示例

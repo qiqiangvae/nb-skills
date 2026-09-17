@@ -1,7 +1,5 @@
 # wiki-lint（健康检查）
 
-> 原 dsh-obsidian skill `wiki-lint`（工具 `wiki_lint` → 脚本 `../scripts/wiki-lint.py`），名字保留。
-
 发现/验证知识库的问题：死链、孤儿、缺信息、index 失效。
 
 ## 前置

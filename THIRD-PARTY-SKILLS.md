@@ -94,17 +94,17 @@ Matt Pocock 公开的「真·工程」Agent Skills 合集，强调可组合、�
 
 ---
 
-### ⭐ ponytail（`@mengyuly/dsh-ponytail`）
+### ⭐ ponytail
 
-「懒惰资深工程师」编码模式：每轮给 Agent 注入一套极简编码约束，外加一组按需加载的过度工程审查 / 审计 / 技术债技能。
+「懒惰资深工程师」编码技能：每轮给 Agent 注入一套极简编码约束，外加一组按需加载的过度工程审查 / 审计 / 技术债技能。
 
-- **来源**：MengYuil/dsh-ponytail（DSH 适配版，MIT）；上游理念来自 [DietrichGebert/ponytail](https://github.com/DietrichGebert/ponytail)
-  - npm：`@mengyuly/dsh-ponytail`，仓库 <https://github.com/MengYuil/dsh-ponytail>
-- **一句话**：用 YAGNI 决策阶梯（能不写 → 复用已有 → 标准库 → 原生能力 → 已装依赖 → 一行 → 最小实现）约束每轮产出，默认选最短正确实现，修根因而非症状；安全底线（输入校验、防数据丢失、安全措施、无障碍、明确验收项）在任何档位都不可删。
-- **档位**：`/ponytail lite|full|ultra|off`（默认 `full`；`ultra` 会先要证据、优先删除或复用、主动质疑投机性抽象/缓存/新依赖，但不是无脑拒绝）。档位会话级，互不干扰，会话结束自动释放；`/ponytail status` 只查询，`/ponytail reset` 清除会话覆盖，`/ponytail default <mode>` 持久化默认值；说「停止 ponytail」「normal mode」可临时停用。
+- **来源**：[DietrichGebert/ponytail](https://github.com/DietrichGebert/ponytail)（MIT，20+ 种 agent 通用）
+  - npm：`@dietrichgebert/ponytail`
+- **一句话**：用 YAGNI 决策阶梯（能不写 → 复用已有 → 标准库 → 原生能力 → 已装依赖 → 一行 → 最小实现）约束每轮产出，默认选最短正确实现，修根因而非症状；安全底线（输入校验、防数据丢失、安全措施、无障碍、明确验收项）在任何档位都不可删。**先读懂问题再看阶梯**——懒惰是针对方案，不是针对读代码。
+- **档位**：`/ponytail lite|full|ultra|off`（默认 `full`；`ultra` 会先要证据、优先删除或复用、主动质疑投机性抽象/缓存/新依赖，但不是无脑拒绝）。可用 `PONYTAIL_DEFAULT_MODE` 环境变量或 `~/.config/ponytail/config.json` 的 `defaultMode` 设默认值。
 - **配套技能**（按需加载，不占常驻 prompt）：`/ponytail-review` 针对最近改动只挑过度工程（每条带位置、替代方案与实际调用证据）、`/ponytail-audit` 全仓审计并区分「可安全删除」与「需先验证」、`/ponytail-debt` 把代码里的 `ponytail:` 注释收割成债务账本、`/ponytail-gain` 上游 Benchmark 计分板、`/ponytail-help` 参考卡。
-- **为什么推荐**：它把「能不写就不写」变成常驻约束而不是一次性提醒，恰好对冲 Agent 默认爱加抽象、缓存和新依赖的偏科。注意其效率数字来自上游 Benchmark，是**上游参考值、不是本适配版的保证**。
-- **形态**：DSH 插件（以插件形式提供上述 skill），不走 `~/.agents/skills/` 目录安装。
+- **为什么推荐**：它把「能不写就不写」变成常驻约束而不是一次性提醒，恰好对冲 Agent 默认爱加抽象、缓存和新依赖的偏科。上游实测（真实 Claude Code 会话改真实开源仓库，Haiku 4.5，n=4）：代码量 **-54%**（过度构建场景最高 -94%）、成本 -20%、耗时 -27%，且安全项 100% 保留。注意该数字来自**上游 Benchmark，不是普遍保证**——上游也说明在以「思考 token」为主的推理模型上可能反向变差。
+- **形态**：多 agent 通用，各宿主装法不同（plugin / extension / 规则文件 / `AGENTS.md`），详见下方安装小节。
 
 ---
 
@@ -116,14 +116,14 @@ Matt Pocock 公开的「真·工程」Agent Skills 合集，强调可组合、�
 | --- | --- | --- | --- |
 | `playwright-cli` | microsoft/playwright-cli | 浏览器自动化 CLI | ⭐⭐⭐ |
 | `guizang-ppt-skill` | op7418/guizang-ppt-skill | 网页 PPT（杂志风 / 瑞士风）+ 演讲者模式 | ⭐⭐⭐ |
-| `ponytail` | MengYuil/dsh-ponytail | 常驻极简编码模式 + review / audit / debt 技能 | ⭐⭐⭐ |
+| `ponytail` | DietrichGebert/ponytail | 常驻极简编码模式 + review / audit / debt 技能 | ⭐⭐⭐ |
 | `setup-matt-pocock-skills` 及整套工程 skill | mattpocock/skills | 规划/调试/TDD/领域建模/交接 | ⭐⭐⭐ |
 | `find-skills` | 社区 | 发现并安装 agent skills | ⭐⭐ |
 | `okr-coach-zh` | 社区 | 大厂风格 OKR 教练 | ⭐ |
 | `outlook-microsoft` | 社区 | 世纪互联版 Outlook 邮件/日历 | ⭐ |
 
 > 注：`handdrawn-infographic`、`reply-cr`、`zagent-gen` 为自研 / 团队 skill，来源与用法见各自项目。
-> 注：`ponytail` 是 DSH 插件（以插件方式提供 skill），不落在 `~/.agents/skills/`，安装方式见下节。
+> 注：`ponytail` 是多 agent 通用技能，各宿主装法不同（plugin / extension / 规则文件），见下节。
 
 ---
 
@@ -160,16 +160,41 @@ git clone https://github.com/op7418/guizang-ppt-skill.git ~/.agents/skills/guiza
 
 更新：`cd ~/.agents/skills/guizang-ppt-skill && git pull`。上游说明见 <https://github.com/op7418/guizang-ppt-skill>。
 
-### ponytail（DSH 插件）
+### ponytail
+
+上游是一个多 agent 通用技能（[DietrichGebert/ponytail](https://github.com/DietrichGebert/ponytail)，MIT，
+官方标注 works with 20 agents），各宿主装法不同，按自己的 agent 选一种：
 
 ```bash
-# 装进某个 profile（web 可换成 tui / 自定义）
-dsh plugin --profile web add @mengyuly/dsh-ponytail
-# 或直接装 GitHub / Release 打包件
-dsh plugin --profile web add github:MengYuil/dsh-ponytail
+# Claude Code（两条命令要分两次发送）
+/plugin marketplace add DietrichGebert/ponytail
+/plugin install ponytail@ponytail
+
+# Codex
+codex plugin marketplace add DietrichGebert/ponytail && codex plugin add ponytail@ponytail
+
+# GitHub Copilot CLI
+copilot plugin marketplace add DietrichGebert/ponytail && copilot plugin install ponytail@ponytail
+
+# Gemini CLI
+gemini extensions install https://github.com/DietrichGebert/ponytail
+
+# OpenCode（写进 opencode.json）
+{ "plugin": ["@dietrichgebert/ponytail"] }
+
+# Cursor
+git clone https://github.com/DietrichGebert/ponytail && node ponytail/scripts/cursor-hooks.js install
 ```
 
-装完需把 `@mengyuly/dsh-ponytail` 列入该 profile 的 `dsh.profile.bundles` 并重启 profile 才生效。验证：会话技能目录出现 `ponytail*` 技能，发 `/ponytail-help` 即可确认。
+Windsurf / Cline / Kiro / Qoder / Zed / Aider / Junie / Copilot Chat 等：拷贝对应的规则文件
+（`.windsurf/rules/`、`.clinerules/`、`.kiro/steering/`、`.qoder/rules/`、`AGENTS.md` 等），
+或直接读仓库自带的 `AGENTS.md` 即可生效（无需安装）。
+
+Claude Code / Codex 的插件会跑两个 Node.js 生命周期钩子，需 `node` 在 PATH 上；没有也能用，
+只是「每轮自动注入」会静默失效。完整宿主列表、卸载方式与 Agent portability 说明见上游 README。
+
+> 社区另有针对特定宿主的封装版（如 npm 上的 `@mengyuly/dsh-ponytail`），本质是同一套规则的上游再分发；
+> 除非该宿主没有上游原生支持，优先用上游。
 
 ---
 

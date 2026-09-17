@@ -1,7 +1,5 @@
 # wiki-ingest（写入 / 摄取）
 
-> 原 dsh-obsidian skill `wiki-ingest`（工具 `wiki_write` → 脚本 `../scripts/wiki-write.py`），名字保留。
-
 把来源（URL/文件/粘贴/对话）或笔记提炼后写进知识库，新建或更新一页。**Agent 负责内容与判断，脚本负责记账。**
 
 ## 前置

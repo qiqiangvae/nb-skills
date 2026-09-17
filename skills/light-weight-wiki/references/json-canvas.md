@@ -1,7 +1,5 @@
 # json-canvas（JSON Canvas 视图）
 
-> 原 dsh-obsidian skill `json-canvas`，名字保留。
-
 JSON Canvas 是**开放规范**（https://jsoncanvas.org），不限于 Obsidian——Obsidian Canvas / Kinopio / Jiyuu 都能读 `.canvas` 文件。本册指导**生成符合规范的 `.canvas` JSON 文件**，用内置文件工具写盘即可（不需要专用工具）。
 
 ## Schema（1.0）

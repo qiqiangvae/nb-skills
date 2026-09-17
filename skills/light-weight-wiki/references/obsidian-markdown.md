@@ -1,6 +1,6 @@
 # obsidian-markdown（Obsidian Flavor Markdown）
 
-> 原 dsh-obsidian skill `obsidian-markdown`，名字保留。写进知识库的任何 `.md` 都以此为准（常驻语法参考）。
+> 写进知识库的任何 `.md` 都以此为准（常驻语法参考）。
 
 写进知识库的 Markdown 用 **OFM**，不要用裸的通用 Markdown。
 
