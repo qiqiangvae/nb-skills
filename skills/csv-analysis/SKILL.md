@@ -8,7 +8,7 @@ description: 用脚本算 csv/tsv/gz 表格，只把 JSON 指标喂进上下文�
 **只算不读**：看原文只走 `peek`，其余一切数值由脚本算，结论只引 JSON 字段。
 数字是抄来的就会错，算出来的不会。
 
-## 铁律（只写行为，依据在 `references/pitfalls.md`）
+## 铁律
 
 1. **看数据只走 `peek`** —— 编码、分隔符、表头、前 5 行一次给全。
 2. **输出只走 `show()`** —— 自动 `head(100)`、每格截 120 字符、末尾报省略行数。
@@ -62,6 +62,13 @@ python3 scripts/tabular.py scout   data.csv   # .gz 或 >50MB 才做
 
 引用结论时带上证据字段：`baseline.ratio_to_baseline` / `zscore`（偏离）、`hhi` / `cr3` / `share`（集中度）、`complete`（可比性）。
 
+## 写 `run` 时的四个坑
+
+1. **`low_memory` 保持默认** —— 设成 `False` 会让 682MB 的文件峰值从 268MB 涨到 2100MB。
+2. **`dtype="category"` 在读入时更费内存** —— 转换要先建整列 object 再 factorize，实测比全读还高（226MB → 388MB）。
+3. **`"202611"` 这类月份是字符串** —— 转 int 会排错序；要转日期先补日（`2026-11-01`）。
+4. **gzip 不能随机 seek** —— 跳读第 10 万行要先解压到那里，所以采样只能从头 `nrows`。
+
 ## 内存与规模
 
 `scout` 给出 `budget_mb`（cgroup 可用内存 × 0.7）和 `tier`：
@@ -95,5 +102,3 @@ python3 scripts/tabular.py scout   data.csv   # .gz 或 >50MB 才做
 ## 边界
 
 这个 skill 覆盖「读 + 算 + 答」。任务里出现改 xlsx、出图、写回文件时，直接说它不覆盖并停在结论 —— 那几件事属于别的工具。
-
-遇到这些情况先读 [`references/pitfalls.md`](references/pitfalls.md)：编码乱码、前导零被吃掉、数字带千分位、内存不够、金额「明明相等却判不等」、结果对不上直觉。
