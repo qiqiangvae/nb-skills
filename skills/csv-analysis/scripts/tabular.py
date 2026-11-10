@@ -634,6 +634,19 @@ def _bucket_end(label, freq):
         return None
 
 
+def _complete_horizon(as_of, data_max_day):
+    """桶算到哪天算「完整期」：数据自身覆盖的最后一天，再与 as_of / 今天取小。
+
+    只跟墙钟比会把导出到月底前几天的文件里最后一期标成 complete，从而拿一个残缺期
+    去比满额期（实测过：数据到 12-27，12 月桶比基线低 12%，却标 complete:true）。
+    """
+    cands = [data_max_day,
+             pd.Timestamp(as_of).normalize() if as_of else None,
+             pd.Timestamp.now().normalize()]
+    cands = [c for c in cands if c is not None]
+    return min(cands) if cands else None
+
+
 def _parse_window(spec, anchor):
     """'30d' | 'YYYY-MM-DD:YYYY-MM-DD' → (start, end)"""
     if ":" in spec:
@@ -789,12 +802,14 @@ def cmd_agg_stream(a, enc, delim, tier, est, budget):
             br = bucket_ratio.setdefault(lbl, [0.0, 0.0])
             br[0] += cell[0]
             br[1] += cell[1]
+        horizon = _complete_horizon(a.as_of, max(daily) if daily else None)
         rows = []
         for label in sorted(buckets):
             sv, sc = buckets[label]
             end = _bucket_end(label, a.freq)
             row = {"key": label, "sum": sv, "count": sc, "mean": (sv / sc) if sc else None,
-                   "complete": bool(end is not None and end <= pd.Timestamp(a.as_of or pd.Timestamp.now())),
+                   "complete": bool(end is not None and horizon is not None
+                                    and end.normalize() <= horizon),
                    "quantiles": "unavailable_in_streaming"}
             if a.ratio and label in bucket_ratio:
                 row.update(_ratio_from_sums(*bucket_ratio[label]))
@@ -900,6 +915,7 @@ def cmd_agg(a):
         d["_t"] = to_time(d, a.time)
         d = d.dropna(subset=["_t"])
         d["_b"] = _fmt_bucket(d["_t"], a.freq)
+        horizon = _complete_horizon(a.as_of, d["_t"].max().normalize() if len(d) else None)
         rows = []
         for label, sub in d.groupby("_b", observed=True):
             blk = _dist(pd.to_numeric(sub[a.col], errors="coerce").dropna().to_numpy())
@@ -908,7 +924,8 @@ def cmd_agg(a):
                 need_col(sub, a.ratio, "分母列")
                 blk.update(_ratio(sub[a.col], sub[a.ratio]))
             end = _bucket_end(label, a.freq)
-            blk["complete"] = bool(end is not None and end <= pd.Timestamp(a.as_of or pd.Timestamp.now()))
+            blk["complete"] = bool(end is not None and horizon is not None
+                                   and end.normalize() <= horizon)
             rows.append(blk)
         rows.sort(key=lambda r: r["key"])
         truncated = len(rows) > MAX_BUCKETS
@@ -1181,8 +1198,6 @@ def cmd_run(a):
         return read_table(p, e, d, **kw)
 
     ns["load"] = load
-    if a.path:
-        ns["df"] = load()
     t0 = time.time()
     exec(compile(src, "<run>", "exec"), ns)
     print(f"[elapsed {time.time() - t0:.2f}s]")
