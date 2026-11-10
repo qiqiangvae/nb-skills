@@ -208,6 +208,31 @@ def case_agg(d):
           "分母 0 给 null 而不是 inf", rr["2026-10"])
     check(abs(rr["2026-11"]["ratio"] - 2000 / 1500) < 1e-6, "2000/1500", rr["2026-11"]["ratio"])
 
+    # 流式降级：与全量结果必须一致，且分位数如实标为不可得
+    st = jrun("agg", ser, "--col", "amount", "--stream")
+    check(st["mode"] == "streaming", "mode 标为 streaming", st.get("mode"))
+    check(st["dist"]["sum"] == 1150 and st["dist"]["count"] == 6,
+          "流式 sum/count 与全量一致", st["dist"])
+    check(st["dist"]["quantiles"] == "unavailable_in_streaming" and "median" not in st["dist"],
+          "流式不给 median 并如实标注", list(st["dist"])[:6])
+    stg = jrun("agg", ser, "--col", "amount", "--by", "channel", "--top", "2", "--stream")
+    got2 = {r["key"]: r["sum"] for r in stg["groups"]}
+    check(got2 == {"a": 550, "c": 400}, "流式分组求和与全量一致", got2)
+    check(abs(stg["hhi"] - 0.3800) < 1e-3, "流式 HHI≈0.38", stg["hhi"])
+    stf = jrun("agg", ser, "--col", "amount", "--time", "month", "--freq", "M",
+               "--baseline", "12", "--stream")
+    check([b["key"] for b in stf["buckets"]] == ["2026-01", "2026-02", "2026-03", "2026-04", "2026-11"],
+          "流式月份桶一致", [b["key"] for b in stf["buckets"]])
+    check(abs(stf["baseline"]["mean"] - 233.3333) < 0.01, "流式基线均值一致", stf["baseline"]["mean"])
+    check(stf["buckets"][-1]["complete"] is False, "流式也标当期不完整", stf["buckets"][-1]["complete"])
+    str_ = jrun("agg", os.path.join(d, "flow.csv"), "--col", "in_amt", "--time", "month",
+                "--freq", "M", "--ratio", "out_amt", "--stream")
+    sr = {b["key"]: b for b in str_["buckets"]}
+    check(sr["2026-09"]["ratio"] == 1.0 and sr["2026-10"]["ratio"] is None,
+          "流式比值一致且除零给 null", (sr["2026-09"]["ratio"], sr["2026-10"]["ratio"]))
+    stw = jrun("agg", ser, "--col", "amount", "--time", "month", "--windows", "7", "--stream")
+    check(stw["windows"]["7"]["sum"] == 50, "流式窗口求和一致", stw["windows"]["7"])
+
     i = jrun("agg", ser, "--col", "amount", "--time", "month", "--interval", "--key", "channel")
     check(i["interval"]["n"] == 3, "channel a 有 4 条记录 → 3 个间隔", i["interval"]["n"])
     check(i["interval"]["unit"] == "minutes", "间隔单位分钟", i["interval"]["unit"])

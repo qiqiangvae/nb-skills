@@ -223,12 +223,16 @@ def read_table(path, enc, delim, **kw):
     return pd.read_csv(path, encoding=enc, sep=delim, compression="infer", **kw)
 
 
-def guard_full_read(path, sample, what):
-    """整表入内存的命令在 C 档必须先拒绝：OOM 是静默的，结构化报错不是。"""
+def size_tier(path):
     total, _ = decompressed_size(path)
     est = total * MEM_FACTOR / 1e6
     budget = memory_budget_mb()
-    tier = tier_for(est, budget)
+    return tier_for(est, budget), est, budget
+
+
+def guard_full_read(path, sample, what):
+    """整表入内存的命令在 C 档必须先拒绝：OOM 是静默的，结构化报错不是。"""
+    tier, est, budget = size_tier(path)
     if tier == "C" and not sample:
         _die(f"tier_C: {what} 需要整表入内存，估算 {est:.0f}MB 超出可用 {budget:.0f}MB",
              tier=tier, est_mem_mb=round(est, 1), budget_mb=budget,
@@ -476,6 +480,78 @@ def _outliers(buf):
     return res
 
 
+
+# ---------------------------------------------------------------- 流式累加器
+# 只做「精确可流式」的那批：count/sum/mean/min/max/std/cv/zeros/top3 + 分组 sum/count。
+# 分位数（median/p01/p25/p75/p99）需要全量值或两遍直方图，流式模式下给 null 并标注。
+
+def _acc_new():
+    return {"n": 0, "sum": 0.0, "sumsq": 0.0, "min": None, "max": None,
+            "zeros": 0, "top": []}
+
+
+def _acc_add(acc, v):
+    v = v[np.isfinite(v)]
+    if not len(v):
+        return
+    acc["n"] += int(len(v))
+    acc["sum"] += float(v.sum())
+    acc["sumsq"] += float((v * v).sum())
+    lo, hi = float(v.min()), float(v.max())
+    acc["min"] = lo if acc["min"] is None else min(acc["min"], lo)
+    acc["max"] = hi if acc["max"] is None else max(acc["max"], hi)
+    acc["zeros"] += int((v == 0).sum())
+    acc["top"] = list(np.sort(np.concatenate([np.asarray(acc["top"], dtype="float64"),
+                                              np.sort(v)[-3:]]))[-3:])
+
+
+def _acc_out(acc):
+    n = acc["n"]
+    if not n:
+        return {"count": 0, "quantiles": "unavailable_in_streaming"}
+    mean = acc["sum"] / n
+    var = max(acc["sumsq"] / n - mean ** 2, 0.0)
+    std = math.sqrt(var) if n > 1 else None
+    return {
+        "count": n, "sum": acc["sum"], "mean": mean,
+        "min": acc["min"], "max": acc["max"],
+        "std": std, "cv": (std / mean) if (std and mean) else None,
+        "zeros": acc["zeros"],
+        "top3": [float(x) for x in np.asarray(acc["top"], dtype="float64")[::-1]],
+        "quantiles": "unavailable_in_streaming",
+    }
+
+
+def _merge_pair(store, keys, num, den):
+    """按 key 累加 分子/分母 两个和，用于流式下的分组比值。"""
+    if not len(num):
+        return
+    dfp = pd.DataFrame({"_k": np.asarray(keys), "_n": np.asarray(num, dtype="float64"),
+                        "_d": np.asarray(den, dtype="float64")})
+    g = dfp.groupby("_k", observed=True, dropna=False).sum()
+    for k, r in g.iterrows():
+        cell = store.get(k)
+        if cell is None:
+            store[k] = [float(r["_n"]), float(r["_d"])]
+        else:
+            cell[0] += float(r["_n"])
+            cell[1] += float(r["_d"])
+
+
+def _merge_series(store, keys, vals):
+    """把一块的 groupby sum/count 合并进 store：{key: [sum, count]}。"""
+    if not len(vals):
+        return
+    g = vals.groupby(keys, observed=True, dropna=False).agg(["sum", "count"])
+    for k, r in g.iterrows():
+        cell = store.get(k)
+        if cell is None:
+            store[k] = [float(r["sum"]), int(r["count"])]
+        else:
+            cell[0] += float(r["sum"])
+            cell[1] += int(r["count"])
+
+
 # ---------------------------------------------------------------- agg
 
 def _dist(a):
@@ -545,9 +621,219 @@ def _parse_window(spec, anchor):
     return anchor - pd.Timedelta(days=days), anchor + pd.Timedelta(days=1)
 
 
+def _ratio_from_sums(num, den):
+    if not den:
+        return {"ratio": None, "diff": num, "den_zero": True}
+    return {"ratio": num / den, "diff": num - den, "den_zero": False}
+
+
+def _bucket_label(d, freq):
+    if freq == "M":
+        return d.strftime("%Y-%m")
+    if freq == "W":
+        return (d - pd.Timedelta(days=int(d.weekday()))).strftime("%Y-%m-%d")
+    return d.strftime("%Y-%m-%d")
+
+
+def cmd_agg_stream(a, enc, delim, tier, est, budget):
+    """C 档的降级路径：边读边累加，分位数不可得，其余精确。"""
+    if a.interval:
+        _die("tier_C: --interval 需要先按时间排序，不能流式",
+             tier=tier, est_mem_mb=round(est, 1), budget_mb=budget,
+             hint="加 --sample N 只读前 N 行，或先用 run 分片排序")
+    need_t = bool(a.freq or a.windows or a.compare)
+    tokens = a.agg.split(",") if a.agg else None
+    usecols = [c for c in [a.col, a.by, a.time, a.ratio] if c]
+    specs = None
+    if a.compare:
+        specs = [x.strip() for x in a.compare.split(",")]
+        if len(specs) != 2:
+            _die("--compare 需要两个窗口，如 30d,90d")
+        if any(":" not in x for x in specs) and not a.as_of:
+            _die("tier_C: 相对窗口需要锚点", hint="加 --as-of 2026-11-10，或改用绝对区间 A:B")
+
+    acc = _acc_new()
+    daily = {}
+    bystore = {}
+    ratio_by = {}
+    ratio_daily = {}
+    cmpstore = {0: {}, 1: {}}
+    rn = rd = 0.0
+    rows_n = 0
+    t0 = time.time()
+    for chunk in read_table(a.path, enc, delim, usecols=usecols,
+                            chunksize=a.chunk, skip_bad=a.skip_bad):
+        rows_n += len(chunk)
+        val = pd.to_numeric(chunk[a.col], errors="coerce") if a.col else None
+        if val is not None:
+            _acc_add(acc, val.to_numpy(dtype="float64"))
+            if a.by:
+                need_col(chunk, a.by, "分组列")
+                _merge_series(bystore, chunk[a.by], val)
+        if a.ratio:
+            need_col(chunk, a.ratio, "分母列")
+            den = pd.to_numeric(chunk[a.ratio], errors="coerce")
+            rn += float(val.sum())
+            rd += float(den.sum())
+            if a.by:
+                _merge_pair(ratio_by, chunk[a.by], val, den)
+        if need_t:
+            need_col(chunk, a.time, "时间列")
+            t = pd.to_datetime(chunk[a.time], errors="coerce", format="mixed")
+            ok = t.notna()
+            if ok.any():
+                _merge_series(daily, t[ok].dt.normalize(), val[ok])
+                if a.ratio:
+                    _merge_pair(ratio_daily, t[ok].dt.normalize(), val[ok],
+                                pd.to_numeric(chunk[a.ratio], errors="coerce")[ok])
+            if a.compare and a.by:
+                for idx, spec in enumerate(specs):
+                    anchor = pd.Timestamp(a.as_of) if a.as_of else pd.Timestamp("2100-01-01")
+                    lo, hi = _parse_window(spec, anchor)
+                    m2 = ok & (t >= lo) & (t < hi)
+                    if m2.any():
+                        _merge_series(cmpstore[idx], chunk[a.by][m2], val[m2])
+
+    out = {"path": a.path, "rows": rows_n, "col": a.col, "tier": tier,
+           "mode": "streaming", "est_mem_mb": round(est, 1), "budget_mb": budget,
+           "note": "流式降级：sum/count/mean/min/max/std/cv/zeros/top3 精确，分位数不可得"}
+    if a.ratio:
+        out.update(_ratio_from_sums(rn, rd))
+
+    if a.by and not a.compare:
+        total = sum(v[0] for v in bystore.values()) or 1.0
+        shares = {k: v[0] / total for k, v in bystore.items()}
+        out["by"] = a.by
+        out["group_count"] = len(bystore)
+        out["hhi"] = round(float(sum(s * s for s in shares.values())), 6) if shares else None
+        out["cr3"] = round(float(sum(sorted(shares.values(), reverse=True)[:3])), 4) if shares else None
+        top = sorted(bystore.items(), key=lambda kv: -kv[1][0])[: a.top or len(bystore)]
+        if a.top and len(bystore) > a.top:
+            out["group_truncated"] = len(bystore) - a.top
+        out["groups"] = []
+        for k, v in top:
+            g = {"key": str(k), "sum": v[0], "count": v[1], "share": round(shares[k], 6),
+                 "quantiles": "unavailable_in_streaming"}
+            if a.ratio and k in ratio_by:
+                g.update(_ratio_from_sums(ratio_by[k][0], ratio_by[k][1]))
+            out["groups"].append(g)
+        _emit(out, "agg")
+        return
+
+    if a.compare:
+        if not a.by:
+            _die("--compare 需要配 --by")
+        anchor = pd.Timestamp(a.as_of) if a.as_of else (max(daily) if daily else None)
+        wins = [_parse_window(sp, anchor) for sp in specs]
+        out["compare"] = {"windows": specs, "mode": "streaming", "groups": []}
+        keys = set(cmpstore[0]) | set(cmpstore[1])
+        ta = sum(v[0] for v in cmpstore[0].values()) or 1.0
+        tb = sum(v[0] for v in cmpstore[1].values()) or 1.0
+        for k in keys:
+            sa = (cmpstore[0][k][0] / ta) if k in cmpstore[0] else None
+            sb = (cmpstore[1][k][0] / tb) if k in cmpstore[1] else None
+            if sa is None:
+                st = "new"
+            elif sb is None:
+                st = "gone"
+            elif abs(sb - sa) < 1e-9:
+                st = "same"
+            else:
+                st = "up" if sb > sa else "down"
+            out["compare"]["groups"].append({
+                "key": str(k), "share_a": sa, "share_b": sb,
+                "delta_pp": None if (sa is None or sb is None) else round((sb - sa) * 100, 2),
+                "status": st})
+        out["compare"]["groups"].sort(key=lambda r: (r["share_b"] is None, -(r["share_b"] or 0)))
+        _emit(out, "agg")
+        return
+
+    if a.freq:
+        buckets = {}
+        for d, cell in daily.items():
+            label = _bucket_label(pd.Timestamp(d), a.freq)
+            b = buckets.setdefault(label, [0.0, 0])
+            b[0] += cell[0]
+            b[1] += cell[1]
+        bucket_ratio = {}
+        for d, cell in ratio_daily.items():
+            lbl = _bucket_label(pd.Timestamp(d), a.freq)
+            br = bucket_ratio.setdefault(lbl, [0.0, 0.0])
+            br[0] += cell[0]
+            br[1] += cell[1]
+        rows = []
+        for label in sorted(buckets):
+            sv, sc = buckets[label]
+            end = _bucket_end(label, a.freq)
+            row = {"key": label, "sum": sv, "count": sc, "mean": (sv / sc) if sc else None,
+                   "complete": bool(end is not None and end <= pd.Timestamp(a.as_of or pd.Timestamp.now())),
+                   "quantiles": "unavailable_in_streaming"}
+            if a.ratio and label in bucket_ratio:
+                row.update(_ratio_from_sums(*bucket_ratio[label]))
+            rows.append(row)
+        if len(rows) > MAX_BUCKETS:
+            rows = rows[-MAX_BUCKETS:]
+            out["bucket_truncated"] = True
+        out["freq"] = a.freq
+        out["buckets"] = rows
+        if a.baseline and len(rows) > 1:
+            complete = [r for r in rows if r["complete"]]
+            base = complete[:-1] if len(complete) > 1 else complete
+            last = (complete or rows)[-1]
+            bm = np.array([r["sum"] for r in base], dtype="float64")
+            if len(bm):
+                mean_b = float(bm.mean())
+                std_b = float(bm.std(ddof=1)) if len(bm) > 1 else 0.0
+                out["baseline"] = {
+                    "basis_buckets": len(bm), "mean": mean_b, "median": float(np.median(bm)),
+                    "max": float(bm.max()), "min": float(bm.min()), "std": std_b,
+                    "cv": (std_b / mean_b) if mean_b else None,
+                    "latest_key": last["key"], "latest_sum": last["sum"],
+                    "ratio_to_baseline": (last["sum"] / mean_b) if mean_b else None,
+                    "zscore": ((last["sum"] - mean_b) / std_b) if std_b else None,
+                }
+        _emit(out, "agg")
+        return
+
+    if a.windows:
+        anchor = pd.Timestamp(a.as_of) if a.as_of else (max(daily) if daily else None)
+        res = {}
+        for w in [x.strip() for x in a.windows.split(",") if x.strip()]:
+            lo, hi = _parse_window(w, anchor)
+            sv = sc = 0.0
+            active = 0
+            for d, cell in daily.items():
+                dd = pd.Timestamp(d)
+                if lo <= dd < hi:
+                    sv += cell[0]
+                    sc += cell[1]
+                    active += 1
+            cell = {"sum": sv, "count": int(sc), "rows": int(sc), "active_keys": active,
+                    "quantiles": "unavailable_in_streaming"}
+            if a.ratio:
+                wn = wd = 0.0
+                for d, pair in ratio_daily.items():
+                    dd = pd.Timestamp(d)
+                    if lo <= dd < hi:
+                        wn += pair[0]
+                        wd += pair[1]
+                cell.update(_ratio_from_sums(wn, wd))
+            res[w] = cell
+        out["anchor"] = str(anchor)
+        out["windows"] = res
+        _emit(out, "agg")
+        return
+
+    out["dist"] = _pick(_acc_out(acc), tokens)
+    _emit(out, "agg")
+
+
 def cmd_agg(a):
     enc, delim = meta(a.path)
-    tier = guard_full_read(a.path, a.sample, "agg")
+    tier, est, budget = size_tier(a.path)
+    if not a.sample and (a.stream or tier == "C"):
+        cmd_agg_stream(a, enc, delim, tier, est, budget)
+        return
     usecols = [c for c in [a.col, a.by, a.time, a.key, a.ratio] if c]
     df = read_table(a.path, enc, delim, usecols=usecols if usecols else None,
                     skip_bad=a.skip_bad, nrows=a.sample)
@@ -912,7 +1198,9 @@ def build_parser():
     q.add_argument("--gaps", type=float, help="短间隔阈值（分钟）")
     q.add_argument("--agg", help="限定输出指标，如 sum,mean,median,max")
     q.add_argument("--skip-bad", dest="skip_bad", action="store_true", help="跳过坏行")
-    q.add_argument("--sample", type=int, help="只读前 N 行（C 档必填，结论须注明采样）")
+    q.add_argument("--sample", type=int, help="只读前 N 行（结论须注明采样）")
+    q.add_argument("--stream", action="store_true", help="强制流式累加（分位数不可得，其余精确）")
+    q.add_argument("--chunk", type=int, default=500000, help="流式分块行数")
     q.add_argument("--top", type=int, default=10)
     q.add_argument("--distinct-by", dest="distinct_by", help="按组统计该列去重数")
     q.add_argument("--ratio", help="同表两列的比值/差值：本列作分子，该列作分母（除零给 null）")

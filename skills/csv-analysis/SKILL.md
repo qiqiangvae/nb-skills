@@ -58,10 +58,15 @@ python3 scripts/tabular.py profile data.csv         # 质量体检 + flags
 
 - **A**：直接全读，别优化。
 - **B**：仍可全读；宽表加 `--cols` 裁列。
-- **C**：`profile` 能跑（全程流式，12M 行实测 171MB）；`agg` / `shape` / `match` 会**拒绝执行**并给提示，
-  此时只能 `--sample 200000`（并声明采样）或改用 `run` 配 `chunksize`。
+- **C**：`profile` 与 `agg` 自动切流式（12M 行实测 175MB）；`shape` / `match` / `agg --interval`
+  仍**拒绝执行**并给提示，此时用 `--sample 200000`（须声明采样）或 `run` 配 `chunksize`。
 
-`agg` 拒绝不是 bug —— 被 OOM 杀掉是静默的，拒绝是响亮的。
+流式下 `agg` 的 `sum / count / mean / min / max / std / cv / zeros / top3` **精确**，
+分组、时间桶、窗口、比值、基线偏离也精确；**只有分位数（median/p01/p25/p75/p99）不可得**，
+输出 `quantiles: "unavailable_in_streaming"` —— 不要谎称有中位数。
+需要分位数就 `--sample N` 后采样式给出，并在结论里注明是基于采样。
+
+拒绝不是 bug —— 被 OOM 杀掉是静默的，拒绝是响亮的。
 
 ## 输出与引用
 
@@ -76,7 +81,7 @@ python3 scripts/tabular.py profile data.csv         # 质量体检 + flags
 | 输出 | 处理 |
 |---|---|
 | `error: bad_rows` | 列数不齐/引号未闭合，`detail` 里有行号；用 `peek` 看原文，修源数据，或 `--skip-bad`（必须注明跳过） |
-| `error: tier_C` | 见上节，`--sample` 或 `run` + `chunksize` |
+| `error: tier_C` | 只出现在 `shape` / `match` / `--interval`（需要排序或双向对齐）：`--sample` 或 `run` + `chunksize` |
 | `error: output_too_large` | 收窄参数 |
 | `encoding` 相关失败 | 不猜编码；让用户把源文件统一成 utf-8 |
 | `no_match` | 两表 key 没有一个交集，先核对 key 的格式（前导零、大小写、空格） |
