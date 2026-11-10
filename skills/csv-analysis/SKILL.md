@@ -1,38 +1,49 @@
 ---
 name: csv-analysis
-description: 用 pandas 分析 CSV / TSV / CSV.GZ 表格：先探测编码与规模，再用脚本算分布统计、分组占比、时间序列、窗口对比、基线偏离、结构变化、间隔节奏、形态与两表对齐，只把结构化 JSON 结论喂给模型，绝不把原始表格读进上下文。当用户让你分析、统计、对比、找异常一个 csv/tsv（含 .gz），问「这批数据里怎么样」「哪个最多」「最近有没有变化」，要看趋势/占比/集中度/快慢/留存，或要核对两张表的差异时使用。不触发：要改 xlsx / Excel 公式 / 多 sheet（用 office-xlsx），要生成图表图片，要出 Word/PPT/PDF。
+description: 用脚本算 csv/tsv/gz 表格，只把 JSON 指标喂进上下文，不读原始行。触发：给了表格要结论（怎么回事 / 哪边多 / 为什么变了）、两张表要对齐、怀疑编码乱码或文件大到读不动。不触发：改 xlsx、出图、出文档。
 ---
 
 # csv-analysis
 
-**这个 skill 存在的唯一理由**：让模型只看见「结论和口径」，不看见原始表格。
-数据体量再小，逐行读进上下文也会让判断失准 —— 数字是抄来的，不是算来的。
+**只算不读**：看原文只走 `peek`，其余一切数值由脚本算，结论只引 JSON 字段。
+数字是抄来的就会错，算出来的不会。
 
-## 铁律
+## 铁律（只写行为，依据在 `references/pitfalls.md`）
 
-1. **不许直接读数据文件**。`Read` / `cat` / `head` / `less` 一律不用；想看原文只走 `peek`。其余一切数值必须由脚本算。
-2. **分析结果只走 `show()`**。禁止裸 `print(df)`、禁止 `df.to_csv`、禁止把整表塞进回答。
-3. **数值比较先定容差**。金额/浮点先 `round(2)` 或给 `--tol`，禁止裸 `==`；1e-12 的浮点噪声会把「完全匹配」算成「不匹配」。
-4. **除法前判零**。除数为 0 输出 `null`，不要 `inf` / `NaN` 混进结论。
-5. **不完整的时间桶不进基线**。`complete:false` 的当期不能和完整期直接比。
-6. **采样必须声明**。用了 `--sample` / `nrows`，结论里必须写「基于前 N 行」。
-7. **不造阈值**。所有阈值都是参数；没给参数就只描述相对偏离，别下「异常」结论。
-8. **不同口径不硬比**。单位、币种、时区、去重主体没对齐时，先报「不可比」。
+1. **看数据只走 `peek`** —— 编码、分隔符、表头、前 5 行一次给全。
+2. **输出只走 `show()`** —— 自动 `head(100)`、每格截 120 字符、末尾报省略行数。
+3. **数值比较带容差** —— 先 `round(2)` 或给 `--tol`。
+4. **除法先判零** —— 分母为 0 时给 `null`。
+5. **口径不一致先报「不可比」** —— 单位、币种、时区、去重主体、时间桶完整性（`complete:false`）任一没对齐，就不比。
+6. **输出里出现的截断，结论里必须同步声明** —— `--sample` / `group_truncated` / `bucket_truncated` / `quantiles: unavailable_in_streaming`。
+7. **阈值只用参数** —— 没给参数就只报相对偏离。
 
-## 开局三步（几乎总是这么起）
+## 开局
 
 ```bash
-python3 scripts/tabular.py peek   data.csv          # 编码/分隔符/表头/前 5 行原文
-python3 scripts/tabular.py scout  data.csv          # 字节/估算行数/内存档位/列名
-python3 scripts/tabular.py profile data.csv         # 质量体检 + flags
+python3 scripts/tabular.py peek    data.csv   # 必做
+python3 scripts/tabular.py profile data.csv   # 必做
+python3 scripts/tabular.py scout   data.csv   # .gz 或 >50MB 才做
 ```
 
-`peek` 是**唯一**允许看原始内容的命令（6 行 × 300 字符）。`profile` 遇到可疑列会在 `flags` 里点名：
-`leading_zero_lost`（前导零已被丢）、`numeric_as_text`（千分位/符号导致存成文本）、
-`mixed_type`（同列数字与文本混杂）、`id_like`（唯一率 >95%）、`has_null`。
-**看到这些 flag 先处理口径，再算指标**——否则后面每个数都是错的。
+**探究完成判据**（三条全满足才进分析）：
 
-问题已经非常具体时（「这列均值多少」）可以跳过开局，直接 `agg`。
+- `profile` 的 JSON 已出，行数、列数都在（有时间列则 `time_range` 也在）；
+- 每个 `flags` 命中都已按下面的动作表处理，或明确记入「口径待确认」；
+- 已能说出接下来要用哪几条算子 —— 说不出就 `profile --cols` 收窄再看一次。
+
+用户只说「帮我分析一下」时的默认范围，按顺序做三步：`agg` 主要数值列（sum/mean/median/min/max）→ 有时间列就 `--freq M --baseline 12` → 有分组列就 `--by --top 10`。
+
+## flag 动作表
+
+| flag | 动作 |
+|---|---|
+| `leading_zero_lost` | 重读时显式 `dtype={"该列":"str"}`，零已经丢了 |
+| `numeric_as_text` | 先 `run` 清洗（千分位 / 货币符号 / 空格）再 `agg`，结论注明已清洗 |
+| `mixed_type` | 只对可解析部分算，或按可解析性分列；静默丢行会让分母变小 |
+| `non_numeric` / `digit_string` | 当编号用（count / distinct），不进均值 |
+| `id_like` | 只做 count / distinct，不做 mean |
+| `has_null` | 先定分母口径：含空行还是不含 |
 
 ## 算子对照表
 
@@ -46,57 +57,43 @@ python3 scripts/tabular.py profile data.csv         # 质量体检 + flags
 | 节奏：相邻事件间隔、是否过密 | `agg --time t --interval --key id` |
 | 整数金额、相近金额、同刻多笔、重复行 | `shape --col x --time t --ints --near 5 --same-ts 3 --dups` |
 | 两张表按 key 对齐：时间差、金额是否匹配 | `match a.csv b.csv --key id --time-a t1 --time-b t2 --val-a v1 --val-b v2` |
+| 两列比值 / 留存 | `agg --col 分子 --ratio 分母 [--by g \| --freq M]` |
 | 以上都不够 | `run`（现写 pandas，出口只有 `show()`） |
 
-`agg` 输出里 **`baseline.ratio_to_baseline` / `zscore` 是偏离证据**，`by` 模式里 `hhi` / `cr3` / `share` 是集中度证据，
-`freq` 模式里每个桶的 `complete` 是可比性证据。引用结论时把这三类数字带上，别只写「有变化」。
+引用结论时带上证据字段：`baseline.ratio_to_baseline` / `zscore`（偏离）、`hhi` / `cr3` / `share`（集中度）、`complete`（可比性）。
 
 ## 内存与规模
 
-`scout` 会给出 `budget_mb`（cgroup 可用内存 × 0.7）和 `tier`；`est_mem = 解压后字节 × 3`
-（×3 是实测上界：数值表 1.74×、长文本宽表 2.72×，宁可保守也不让 OOM 静默发生）：
+`scout` 给出 `budget_mb`（cgroup 可用内存 × 0.7）和 `tier`：
 
-- **A**：直接全读，别优化。
-- **B**：仍可全读；宽表加 `--cols` 裁列。
-- **C**：`profile` 与 `agg` 自动切流式（12M 行实测 175MB）；`shape` / `match` / `agg --interval`
-  仍**拒绝执行**并给提示，此时用 `--sample 200000`（须声明采样）或 `run` 配 `chunksize`。
+- **A / B**：可全读；宽表加 `--cols` 裁列。
+- **C**：`profile` 与 `agg` 自动切流式，`sum/count/mean/min/max/std/cv/zeros/top3`、分组、时间桶、窗口、比值、基线**保持精确**；只有分位数与 `distinct` 不可得，分别标 `quantiles: unavailable_in_streaming` 和 `distinct_note`。
+- **`shape` / `match` / `agg --interval` 在 C 档拒绝**（需要排序或双向对齐）。此时用 `--sample 200000` 并声明采样，或 `run` 配 `chunksize`。
 
-流式下 `agg` 的 `sum / count / mean / min / max / std / cv / zeros / top3` **精确**，
-分组、时间桶、窗口、比值、基线偏离也精确；**只有分位数（median/p01/p25/p75/p99）不可得**，
-输出 `quantiles: "unavailable_in_streaming"` —— 不要谎称有中位数。
-需要分位数就 `--sample N` 后采样式给出，并在结论里注明是基于采样。
+`run` 里用 `budget()` 自查：文件超过它的 1/3 就直接 `chunksize`。
 
-拒绝不是 bug —— 被 OOM 杀掉是静默的，拒绝是响亮的。
+## 收尾判据
 
-## 输出与引用
+交付前逐条过：
 
-- 除 `peek` 外全部输出 **JSON**，直接取里面的数字，**不要自己重算**。
-- `run` 里可用 `pd`、`np`、`show()`、`load()`、`budget()`（当前可用内存 MB），以及预加载的 `df`（给了路径时）。
-  文件超过 `budget()` 的大致 1/3 就别 `read_csv` 整表，直接用 `chunksize`。
-- 结论里出现数字，必须能对回某个 JSON 字段；写不出来源的数字就是编的。
-- 超过长度上限会报 `output_too_large`，用 `--top` / `--windows` / `--cols` 收窄，不要重试原命令。
+1. 用户问的每个数，都能指出是哪次命令的哪个字段；
+2. 每个「变化 / 异常」结论，至少有「分布 / 时间 / 结构」三维里两维的独立证据；
+3. 采样、不完整期、分组截断、分位数不可得，四处中命中哪些就声明哪些；
+4. 说「异常」之前先写了正常解释的可能，或明确写了「未验证」。
 
 ## 出错怎么办
 
 | 输出 | 处理 |
 |---|---|
-| `error: bad_rows` | 列数不齐/引号未闭合，`detail` 里有行号；用 `peek` 看原文，修源数据，或 `--skip-bad`（必须注明跳过） |
-| `error: tier_C` | 只出现在 `shape` / `match` / `--interval`（需要排序或双向对齐）：`--sample` 或 `run` + `chunksize` |
-| `error: output_too_large` | 收窄参数 |
-| `encoding` 相关失败 | 不猜编码；让用户把源文件统一成 utf-8 |
-| `no_match` | 两表 key 没有一个交集，先核对 key 的格式（前导零、大小写、空格） |
-| `merge_explosion` | key 不唯一，对齐后行数是两侧 10 倍以上；换唯一 key（订单号/流水号），别硬对齐 |
+| `error: bad_rows` | 列数不齐 / 引号未闭合，`detail` 带行号；`peek` 看原文，修源数据，或 `--skip-bad`（须注明） |
+| `error: tier_C` | 只出现在 `shape` / `match` / `--interval`：`--sample` 或 `run` + `chunksize` |
+| `error: output_too_large` | 用 `--top` / `--windows` / `--cols` 收窄，别重试原命令 |
+| `error: merge_explosion` | key 不唯一导致笛卡尔积；换唯一 key（订单号 / 流水号） |
+| 编码失败 | 让用户把源文件统一成 utf-8，不猜编码 |
+| `{"error":"no_match"}`（正常输出，rc=0） | 两表 key 无交集，核对格式：前导零、大小写、前后空格 |
 
-## 分析纪律
+## 边界
 
-- 先建基线再判断偏离；样本不足时别用不稳定的均值下结论。
-- 单一指标偏离只是线索；多维度同向变化才值得下判断。
-- 统计异常 ≠ 风险，要区分「异常」与「有解释的异常」。
-- 数据不可比时先降置信度，不要硬算一个漂亮数字。
+这个 skill 覆盖「读 + 算 + 答」。任务里出现改 xlsx、出图、写回文件时，直接说它不覆盖并停在结论 —— 那几件事属于别的工具。
 
-## 不做的事
-
-xlsx / Excel 公式 / 多 sheet（→ office-xlsx）、图表图片、写回文件、自动清洗修数据（只报不修）、
-模糊实体归一、cohort 留存矩阵、季节性分解、变点检测。
-
-更细的坑与实测数字见 `references/pitfalls.md`。
+遇到这些情况先读 [`references/pitfalls.md`](references/pitfalls.md)：编码乱码、前导零被吃掉、数字带千分位、内存不够、金额「明明相等却判不等」、结果对不上直觉。

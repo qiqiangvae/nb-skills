@@ -219,6 +219,15 @@ def case_agg(d):
     got2 = {r["key"]: r["sum"] for r in stg["groups"]}
     check(got2 == {"a": 550, "c": 400}, "流式分组求和与全量一致", got2)
     check(abs(stg["hhi"] - 0.3800) < 1e-3, "流式 HHI≈0.38", stg["hhi"])
+    std = jrun("agg", ser, "--col", "amount", "--stream")
+    check(std["null_rate"] == 0.0 and std["distinct"] is None
+          and std["distinct_note"] == "unavailable_in_streaming",
+          "流式给精确 null_rate，distinct 显式标不可得（不静默丢）", (std["null_rate"], std["distinct"]))
+    stdb = jrun("agg", ser, "--col", "amount", "--by", "channel", "--top", "1",
+                "--distinct-by", "channel", "--stream")
+    check(stdb["groups"][0].get("distinct_channel", "缺失") is None
+          and stdb.get("distinct_note") == "unavailable_in_streaming",
+          "流式 --distinct-by 显式给 null 而不是丢字段", stdb["groups"][0])
     stf = jrun("agg", ser, "--col", "amount", "--time", "month", "--freq", "M",
                "--baseline", "12", "--stream")
     check([b["key"] for b in stf["buckets"]] == ["2026-01", "2026-02", "2026-03", "2026-04", "2026-11"],

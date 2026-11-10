@@ -660,12 +660,14 @@ def cmd_agg_stream(a, enc, delim, tier, est, budget):
     cmpstore = {0: {}, 1: {}}
     rn = rd = 0.0
     rows_n = 0
+    null_n = 0
     t0 = time.time()
     for chunk in read_table(a.path, enc, delim, usecols=usecols,
                             chunksize=a.chunk, skip_bad=a.skip_bad):
         rows_n += len(chunk)
         val = pd.to_numeric(chunk[a.col], errors="coerce") if a.col else None
         if val is not None:
+            null_n += int(val.isna().sum())
             _acc_add(acc, val.to_numpy(dtype="float64"))
             if a.by:
                 need_col(chunk, a.by, "分组列")
@@ -716,7 +718,11 @@ def cmd_agg_stream(a, enc, delim, tier, est, budget):
                  "quantiles": "unavailable_in_streaming"}
             if a.ratio and k in ratio_by:
                 g.update(_ratio_from_sums(ratio_by[k][0], ratio_by[k][1]))
+            if a.distinct_by:
+                g["distinct_" + a.distinct_by] = None
             out["groups"].append(g)
+        if a.distinct_by:
+            out["distinct_note"] = "unavailable_in_streaming"
         _emit(out, "agg")
         return
 
@@ -825,6 +831,9 @@ def cmd_agg_stream(a, enc, delim, tier, est, budget):
         return
 
     out["dist"] = _pick(_acc_out(acc), tokens)
+    out["null_rate"] = round(null_n / rows_n, 4) if rows_n else None
+    out["distinct"] = None
+    out["distinct_note"] = "unavailable_in_streaming"
     _emit(out, "agg")
 
 
@@ -1009,7 +1018,7 @@ def cmd_agg(a):
     if a.ratio:
         need_col(df, a.ratio, "分母列")
         out.update(_ratio(df[a.col], df[a.ratio]))
-    out["null_rate"] = round(float(1 - len(vals) / len(df)), 4) if len(df) else None
+    out["null_rate"] = round(float(df[a.col].isna().mean()), 4) if len(df) else None
     out["distinct"] = int(df[a.col].nunique())
     _emit(out, "agg")
 
