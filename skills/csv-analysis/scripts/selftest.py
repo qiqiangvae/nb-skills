@@ -285,6 +285,7 @@ def case_shape_match(d):
 def case_run(d):
     print("[7] run：show() 截断与口径")
     code = (
+        "df = load()\n"
         "print('rows', len(df))\n"
         "print(df.head(2).to_dict('records'))\n"
         "show(pd.DataFrame({'x': range(250)}))\n"

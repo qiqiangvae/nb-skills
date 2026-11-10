@@ -64,8 +64,9 @@ python3 scripts/tabular.py scout   data.csv   # .gz 或 >50MB 才做
 
 ## `run` 里怎么读文件
 
-用 `load()`（给了路径时已经预加载成 `df`）：它负责编码与分隔符探测、`low_memory` 保持默认、
-压缩格式识别。绕过去直接 `pd.read_csv` 会丢掉这三样，大文件上就是四倍内存起步。
+`run` **不预加载** `df`：要整表就第一行写 `df = load()`，大文件直接 `for ch in load(chunksize=200000)`。
+`load()` 负责编码与分隔符探测、`low_memory` 保持默认、压缩格式识别。绕过去直接 `pd.read_csv`
+会丢掉这三样，大文件上就是四倍内存起步。
 
 ## 内存与规模
 
