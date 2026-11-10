@@ -248,8 +248,30 @@ def need_col(df, name, role="列"):
 
 
 def to_time(df, col):
-    s = pd.to_datetime(df[col], errors="coerce", format="mixed")
-    return s
+    return parse_time_series(df[col], col)
+
+
+def parse_time_series(s, col="time"):
+    """解析时间列。整数 YYYYMM 会被 pandas 当 epoch 纳秒（静默变成 1970），这里挡掉。"""
+    if pd.api.types.is_numeric_dtype(s):
+        v = pd.to_numeric(s, errors="coerce").dropna()
+        if len(v) and float(v.min()) >= 190001 and float(v.max()) <= 999912 \
+                and bool((v == v.round()).all()):
+            # 6 位 %Y%m%d 在 pandas 3.0 会上错位（202611 → 2026-01-01），补个日再解析
+            return pd.to_datetime(v.astype("int64").astype(str) + "01",
+                                  format="%Y%m%d", errors="coerce")
+        parsed = pd.to_datetime(s, errors="coerce", format="mixed")
+        nn = parsed.dropna()
+        if len(nn) and bool((nn.dt.year <= 1970).all()):
+            _die("时间列是数字，含义不明（疑似 YYYYMM，或 epoch 纳秒）", col=col,
+                 hint="转成 'YYYY-MM' / 'YYYY-MM-DD' 文本；或用 run 显式 "
+                      "pd.to_datetime(..., format=...) 后再传 --time")
+        return parsed
+    parsed = pd.to_datetime(s, errors="coerce", format="mixed")
+    if len(s) and parsed.dropna().empty:
+        _die("时间列无法解析", col=col, sample=[str(x) for x in s.head(3)],
+             hint="先 peek 看原文格式；用 run 显式指定 format 后再传 --time")
+    return parsed
 
 
 # ---------------------------------------------------------------- peek / scout
@@ -1092,8 +1114,8 @@ def cmd_match(a):
     if not len(m):
         _emit({"error": "no_match", "key": a.key}, "match")
         return
-    ta = pd.to_datetime(m["_ta"], errors="coerce", format="mixed")
-    tb = pd.to_datetime(m["_tb"], errors="coerce", format="mixed")
+    ta = parse_time_series(m["_ta"], a.time_a)
+    tb = parse_time_series(m["_tb"], a.time_b)
     dt = (tb - ta).dt.total_seconds() / 60.0
     if a.within:
         keep = dt.abs() <= a.within * 60.0

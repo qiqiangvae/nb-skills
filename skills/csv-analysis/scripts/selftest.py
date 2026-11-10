@@ -94,6 +94,12 @@ def build(d):
     # 7b. 同表两列比值：含分母为 0 的月份
     with open(os.path.join(d, "flow.csv"), "w", encoding="utf-8", newline="") as f:
         f.write("month,in_amt,out_amt\n2026-09,1000,1000\n2026-10,500,0\n2026-11,2000,1500\n")
+    # 7c. 整数 YYYYMM 月份（pandas 会当成 epoch 纳秒，静默变成 1970）
+    with open(os.path.join(d, "yyyymm.csv"), "w", encoding="utf-8", newline="") as f:
+        f.write("month,amount\n202611,100\n202610,200\n202609,300\n")
+    # 7d. 含义不明的纯数字时间列（年份），必须拒绝而不是当 1970
+    with open(os.path.join(d, "ambiguous.csv"), "w", encoding="utf-8", newline="") as f:
+        f.write("year,amount\n2020,1\n2021,2\n")
     # 8. 两表对齐：金额差 1e-12（浮点噪声），时间差 30 分钟
     with open(os.path.join(d, "left.csv"), "w", encoding="utf-8", newline="") as f:
         f.write("id,created_at,amount\nk1,2026-10-05 10:00:00,5537.499648730936\n")
@@ -241,6 +247,15 @@ def case_agg(d):
           "流式比值一致且除零给 null", (sr["2026-09"]["ratio"], sr["2026-10"]["ratio"]))
     stw = jrun("agg", ser, "--col", "amount", "--time", "month", "--windows", "7", "--stream")
     check(stw["windows"]["7"]["sum"] == 50, "流式窗口求和一致", stw["windows"]["7"])
+
+    ym = jrun("agg", os.path.join(d, "yyyymm.csv"), "--col", "amount", "--time", "month",
+              "--freq", "M")
+    check([b["key"] for b in ym["buckets"]] == ["2026-09", "2026-10", "2026-11"],
+          "整数 202611 被当成 2026-11 而不是 1970", [b["key"] for b in ym["buckets"]])
+    amb = run("agg", os.path.join(d, "ambiguous.csv"), "--col", "amount", "--time", "year",
+              "--freq", "M")
+    check(amb.returncode == 2 and "含义不明" in amb.stdout,
+          "纯数字年份列拒绝解析而不是静默变 1970", amb.stdout[:120])
 
     i = jrun("agg", ser, "--col", "amount", "--time", "month", "--interval", "--key", "channel")
     check(i["interval"]["n"] == 3, "channel a 有 4 条记录 → 3 个间隔", i["interval"]["n"])

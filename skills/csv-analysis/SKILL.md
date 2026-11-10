@@ -62,12 +62,10 @@ python3 scripts/tabular.py scout   data.csv   # .gz 或 >50MB 才做
 
 引用结论时带上证据字段：`baseline.ratio_to_baseline` / `zscore`（偏离）、`hhi` / `cr3` / `share`（集中度）、`complete`（可比性）。
 
-## 写 `run` 时的四个坑
+## `run` 里怎么读文件
 
-1. **`low_memory` 保持默认** —— 设成 `False` 会让 682MB 的文件峰值从 268MB 涨到 2100MB。
-2. **`dtype="category"` 在读入时更费内存** —— 转换要先建整列 object 再 factorize，实测比全读还高（226MB → 388MB）。
-3. **`"202611"` 这类月份是字符串** —— 转 int 会排错序；要转日期先补日（`2026-11-01`）。
-4. **gzip 不能随机 seek** —— 跳读第 10 万行要先解压到那里，所以采样只能从头 `nrows`。
+用 `load()`（给了路径时已经预加载成 `df`）：它负责编码与分隔符探测、`low_memory` 保持默认、
+压缩格式识别。绕过去直接 `pd.read_csv` 会丢掉这三样，大文件上就是四倍内存起步。
 
 ## 内存与规模
 
