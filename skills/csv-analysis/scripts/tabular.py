@@ -31,7 +31,7 @@ SAMPLE_BYTES = 1 << 18
 HEAD_LINES = 200
 LIMITS = {"scout": 2500, "profile": 9000, "agg": 14000, "shape": 5000, "match": 5000}
 TIER_A_MB = 300
-MEM_FACTOR = 2.0
+MEM_FACTOR = 3.0   # 实测上界：数值表 1.74x、文本宽表 2.72x
 MAX_BUCKETS = 60
 MAX_DISTINCT = 10000
 SHOW_ROWS = 100
@@ -685,13 +685,27 @@ def cmd_agg(a):
             _emit(out, "agg")
             return
 
-        g = df.groupby(a.by, observed=True, dropna=False)
-        total_sum = float(pd.to_numeric(df[a.col], errors="coerce").sum()) or 1.0
+        # 先向量化算每组的 sum/count（内存 O(组数)，不是 O(行×组)），
+        # 再只对 top-N 组求分布统计 —— 高基数字段（如近唯一的 id）不会按组建表。
+        need_col(df, a.col, "指标列")
+        val = pd.to_numeric(df[a.col], errors="coerce")
+        gsum = val.groupby(df[a.by], observed=True, dropna=False).agg(["sum", "count"])
+        total_sum = float(gsum["sum"].sum()) or 1.0
+        shares = gsum["sum"] / total_sum
+        out["by"] = a.by
+        out["group_count"] = int(len(gsum))
+        out["hhi"] = round(float((shares ** 2).sum()), 6) if len(shares) else None
+        out["cr3"] = round(float(shares.nlargest(3).sum()), 4) if len(shares) else None
+        top_keys = list(gsum["sum"].nlargest(a.top if a.top else len(gsum)).index)
+        if a.top and len(gsum) > a.top:
+            out["group_truncated"] = int(len(gsum) - a.top)
+        sel = df[df[a.by].isin(top_keys)]
+        gsel = sel.groupby(a.by, observed=True, dropna=False)
         rows = []
-        for key, sub in g:
+        for key, sub in gsel:
             blk = _dist(pd.to_numeric(sub[a.col], errors="coerce").dropna().to_numpy())
             blk["key"] = str(key)
-            blk["share"] = (blk.get("sum", 0.0) / total_sum) if blk.get("sum") is not None else None
+            blk["share"] = float(shares.get(key, float("nan")))
             if a.ratio:
                 need_col(sub, a.ratio, "分母列")
                 blk.update(_ratio(sub[a.col], sub[a.ratio]))
@@ -700,16 +714,7 @@ def cmd_agg(a):
                 blk["distinct_" + a.distinct_by] = int(sub[a.distinct_by].nunique())
             rows.append(blk)
         rows.sort(key=lambda r: (-(r.get("sum") or 0)))
-        tot_share = [r["share"] for r in rows if r.get("share") is not None]
-        out["by"] = a.by
-        out["group_count"] = len(rows)
-        out["hhi"] = round(float(sum(s * s for s in tot_share)), 6) if tot_share else None
-        out["cr3"] = round(float(sum(tot_share[:3])), 4) if tot_share else None
-        if a.top and len(rows) > a.top:
-            out["groups"] = rows[:a.top]
-            out["group_truncated"] = len(rows) - a.top
-        else:
-            out["groups"] = rows
+        out["groups"] = rows
         _emit(out, "agg")
         return
 
@@ -784,6 +789,11 @@ def cmd_match(a):
     A = A[[a.key, a.time_a, a.val_a]].rename(columns={a.time_a: "_ta", a.val_a: "_va"})
     B = B[[a.key, a.time_b, a.val_b]].rename(columns={a.time_b: "_tb", a.val_b: "_vb"})
     m = A.merge(B, on=a.key, how="inner")
+    limit = 10 * max(len(A), len(B), 1)
+    if len(m) > limit:
+        _die("merge_explosion: key 不唯一，对齐后行数是两侧的 10 倍以上",
+             merged_rows=len(m), left_rows=len(A), right_rows=len(B),
+             hint="key 必须唯一（订单号/流水号）。先去重或换 key，别对非唯一 key 做对齐")
     if not len(m):
         _emit({"error": "no_match", "key": a.key}, "match")
         return
@@ -843,7 +853,8 @@ def cmd_run(a):
     src = sys.stdin.read() if a.script in (None, "-") else open(a.script, encoding="utf-8").read()
     if not src.strip():
         _die("没有脚本内容：用 --script file.py 或把代码从 stdin 传入")
-    ns = {"pd": pd, "np": np, "show": _show, "__name__": "__main__"}
+    ns = {"pd": pd, "np": np, "show": _show, "budget": memory_budget_mb,
+          "__name__": "__main__"}
 
     def load(path=None, **kw):
         p = path or a.path

@@ -53,7 +53,8 @@ python3 scripts/tabular.py profile data.csv         # 质量体检 + flags
 
 ## 内存与规模
 
-`scout` 会给出 `budget_mb`（容器可用内存的 70%）和 `tier`：
+`scout` 会给出 `budget_mb`（cgroup 可用内存 × 0.7）和 `tier`；`est_mem = 解压后字节 × 3`
+（×3 是实测上界：数值表 1.74×、长文本宽表 2.72×，宁可保守也不让 OOM 静默发生）：
 
 - **A**：直接全读，别优化。
 - **B**：仍可全读；宽表加 `--cols` 裁列。
@@ -65,7 +66,8 @@ python3 scripts/tabular.py profile data.csv         # 质量体检 + flags
 ## 输出与引用
 
 - 除 `peek` 外全部输出 **JSON**，直接取里面的数字，**不要自己重算**。
-- `run` 里可用 `pd`、`np`、`show()`、`load()`，以及预加载的 `df`（给了路径时）。
+- `run` 里可用 `pd`、`np`、`show()`、`load()`、`budget()`（当前可用内存 MB），以及预加载的 `df`（给了路径时）。
+  文件超过 `budget()` 的大致 1/3 就别 `read_csv` 整表，直接用 `chunksize`。
 - 结论里出现数字，必须能对回某个 JSON 字段；写不出来源的数字就是编的。
 - 超过长度上限会报 `output_too_large`，用 `--top` / `--windows` / `--cols` 收窄，不要重试原命令。
 
@@ -78,6 +80,7 @@ python3 scripts/tabular.py profile data.csv         # 质量体检 + flags
 | `error: output_too_large` | 收窄参数 |
 | `encoding` 相关失败 | 不猜编码；让用户把源文件统一成 utf-8 |
 | `no_match` | 两表 key 没有一个交集，先核对 key 的格式（前导零、大小写、空格） |
+| `merge_explosion` | key 不唯一，对齐后行数是两侧 10 倍以上；换唯一 key（订单号/流水号），别硬对齐 |
 
 ## 分析纪律
 
