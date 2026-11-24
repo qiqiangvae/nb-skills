@@ -12,7 +12,7 @@ nb-skills/
 │   ├── handdrawn-infographic/     # 手绘信息图提示词生成
 │   ├── light-weight-wiki/         # 轻量 LLM Wiki 工具链：入口 SKILL + references/（原 skill 名分册）+ 零依赖脚本
 │   ├── load-testing/              # 压测与容量评估：入口 SKILL + references/ 四册
-│   └── skill-audit/               # 存量 skill 只读体检（六遍）+ scripts/lint_skill.py，确认后才改
+│   └── skill-audit/               # 存量 skill 只读体检（合理性可选）+ scripts/lint_skill.py，确认后才改
 ├── THIRD-PARTY-SKILLS.md      # 三方 skills 收录说明（重点：playwright-cli、mattpocock/skills）
 └── README.md
 ```
@@ -87,7 +87,7 @@ npx skills remove <name>     # 卸载某个 skill
 - **coding-publish-skill** — 把本地项目发布到 GitHub / npm。结构：`SKILL.md` 是**入口**（分派 + 公共前置 A–D），`references/` 一册一个分支（`github.md`、`npm.md`、`sensitive-content.md`）；`scripts/` 为零依赖 bash 脚本：`scan-sensitive.sh`（敏感内容审查强制门禁：先把待提交内容落到索引，再分「硬门禁 1–3」与「需人工过目 1–4」两段输出，命中即阻塞）、`selftest.sh`（10 个用例的回归自检，锁住历史缺陷：未追踪的新 `.env` 曾对 `git grep` 完全不可见、`\s` 在 POSIX ERE 里退化成字面量 s、`.env.example` 被硬拦逼出绕过习惯等）。跑 `bash scripts/selftest.sh` 验证。门禁只管机器能判定的（令牌形状 / 真实密钥文件 / `.gitignore` 覆盖），占位符与真值难分的模式走人工过目。
 - **csv-analysis** — 让 Agent 分析 CSV/TSV/CSV.GZ 而**不把原始表格读进上下文**：模型只看 JSON 结论，所有数值由脚本算。结构：`SKILL.md` 是入口（铁律 + 完成判据 + flag 动作表 + 算子对照表 + 内存档位），`scripts/tabular.py` 单文件 7 个子命令——`peek`（唯一能看原文的口子）、`scout`（元数据 + 内存档位）、`profile`（质量体检 + flags：前导零丢失/数字存成文本/混合类型/类 ID 列）、`agg`（万用聚合：分布统计 / 分组占比 / 时间桶 / 窗口对比 / 基线偏离 / 结构对比 / 间隔 / 两列比值）、`shape`（整数·相近·同刻多笔·重复行）、`match`（两表对齐：时间差 + 金额容差匹配）、`run`（自由执行器，出口只有 `show()`）。`scripts/selftest.py` 用 7 个坏样本锁住 65 条断言：GBK/BOM/前导零/混合类型/千分位数字文本/gzip ISIZE/坏行行号/浮点容差/除零给 null/`--baseline` 剔除不完整期。关键实测：`low_memory=False` 会把 682MB 文件的峰值从 268MB 抬到 2100MB；只有 `chunksize` 能压到 122MB；档位按容器 cgroup 可用内存算（70% 安全线），C 档的 `agg` 主动拒绝而不是被 OOM 杀。跑 `python3 scripts/selftest.py` 验证。
 - **light-weight-wiki** — 把一个 Markdown 文件夹建成并维护成可检索的个人/项目知识库（LLM Wiki 工具链），并附配套能力。结构：`SKILL.md` 是**入口**（判断意图并分派 + 公共前置/护栏），`references/` 下**按原名**保留原 dsh-obsidian 各 skill 的中文分册——`wiki`(主入口/建库)、`wiki-ingest`(写入/记账)、`wiki-query`(检索/问答)、`wiki-lint`(健康检查)、`defuddle`(网页提净)、`save`(存洞察)、`think`(推理循环)、`obsidian-markdown`(OFM 语法)、`json-canvas`(.canvas)、`obsidian-bases`(.base)、`obsidian-cli`(需 Obsidian 运行)；`scripts/` 为零依赖 Python 标准库脚本：`wiki-scaffold.py`、`wiki-write.py`（frontmatter 补全、index/log 更新、文件名安全、机器页保护、来源哈希去重、未解析链接报告）、`wiki-search.py`（BM25 检索 + 链接图，分中文/日文 CJK n-gram 与英文）、`wiki-lint.py`（死链/孤儿/缺 frontmatter/失效 index）、`wiki-rename.py`（改名/删页，同步页内 title 与全库引用）、`light-weight-wiki-config.py`（vaultPath/typeFolders）、`selftest.py`（回归自检）。Agent 负责内容，脚本负责记账；跨 agent 通用。
-- **skill-audit** — 体检并改造**已有**的 skill，补的是 `writing-for-agents` 只讲怎么写、不负责发现问题的空缺。结构：`SKILL.md` 是六遍扫描——第 1 遍质疑内容合理性（逻辑漏洞、自相矛盾、做不到的承诺、没闸门的副作用）；第 2 遍查脚本（密钥、危险操作、写死路径、失败静默、改用户全局状态、文档与实现不符）；后四遍是形式（触发器写得像简介 / 正文留着编写时的讨论过程 / 句子与任务无关 / 步骤与参考搅在一起）。**全程只读**：所有修法先写进改动表与质疑表，用户明确确认后才落刀，确认范围外的一处也不动；`scripts/lint_skill.py` 零依赖，判硬问题（frontmatter、name 与目录名、死链、`references/` 孤儿分册、疑似密钥、脚本语法、危险操作）并高亮提示（超长入口、重复句、指向 skill 之外的链接、写死的个人路径、改用户仓库状态的命令、没人引用的脚本、残渣词、空话），`--test` 跑自检。跑 `python3 scripts/lint_skill.py <skill 目录>` 验证，提示是线索不是结论。
+- **skill-audit** — 体检并改造**已有**的 skill，补的是 `writing-for-agents` 只讲怎么写、不负责发现问题的空缺。结构：开工先问用户要不要核查内容合理性，要查才跑第 1 遍（逻辑漏洞、自相矛盾、做不到的承诺、不可逆动作没有确认），其余五遍固定——脚本（密钥、危险操作、写死路径、失败不报错、改用户全局状态、文档与实现不符）、触发器、编写过程残渣、无关说明、结构。**全程只读**：修法写成带编号的改动清单与质疑清单（不用表格，用户按编号确认），用户明确确认后才动手改文件，确认范围外的一处也不动；`scripts/lint_skill.py` 零依赖，判硬问题（frontmatter、name 与目录名、指向不存在文件的引用、`references/` 下没人引用的文件、疑似密钥、脚本语法、危险操作）并高亮提示（超长入口、重复句、指向 skill 之外的链接、写死的个人路径、改用户仓库状态的命令、没人引用的脚本、残渣词、空话），`--test` 跑自检。跑 `python3 scripts/lint_skill.py <skill 目录>` 验证，提示是线索不是结论。
 
 ## 三方 skills
 

@@ -5,7 +5,7 @@
 退出码: 0 无硬问题；1 有硬问题；2 用法错误
 
 硬问题（退出码 1）：SKILL.md 缺失、frontmatter 缺 name/description、name 与目录名不符、
-指向 skill 内不存在文件的指针、references/ 下存在没人引用的孤儿分册、
+指向 skill 内不存在文件的引用、references/ 下存在没人引用的文件、
 疑似密钥、脚本语法错误、危险操作（递归删除、改写远端/历史、提权、管道执行外部代码、命令注入面）。
 提示（不影响退出码）：超长入口、重复句、指向 skill 之外的链接、写死的个人路径、
 改用户仓库状态的命令、没人引用的脚本、编写过程残渣、空话弱指令。
@@ -194,7 +194,7 @@ def check(directory):
                 sibling = "/" not in rel
                 inside = rel.strip("./").split("/")[0] in top_dirs
                 if sibling or inside:
-                    errors.append(f"死链 {md.relative_to(directory)}:{lineno} -> {target}")
+                    errors.append(f"指向不存在的文件 {md.relative_to(directory)}:{lineno} -> {target}")
                 elif not in_code:
                     # 链接指向 skill 之外（./src/x.md 这类），多于在描述目标环境
                     hints.append(f"指针指向 skill 之外 {md.relative_to(directory)}:{lineno} -> {target}")
@@ -203,10 +203,10 @@ def check(directory):
     for md in mds:
         mentioned |= set(re.findall(r"[\w.-]+\.[A-Za-z0-9]+", read(md)))
 
-    # 孤儿分册：references/ 下没有任何文件引用它
+    # 没人引用的参考文件：references/ 下没有任何文件引用它
     for md in sorted((directory / "references").rglob("*.md")):
         if md.resolve() not in linked:
-            errors.append(f"孤儿分册 {md.relative_to(directory)}（没有任何文件引用它）")
+            errors.append(f"没人引用的参考文件 {md.relative_to(directory)}（没有任何文件引用它）")
 
     # 提示类
     entry_lines = text.count("\n") + 1
@@ -275,8 +275,8 @@ def self_test():
         make("noname", "---\ndescription: 用 A。\n---\n# t\n")
         make("blockdesc", "---\nname: s\ndescription: >\n  用 A 处理 B，\n  也处理 C。\n---\n# t\n")
         make("envpath", "---\nname: s\ndescription: 用 A。\n---\n配置在 `~/.config/x.json`，生成 `wiki/index.md`。\n")
-        make("dup", "---\nname: s\ndescription: 用 A。\n---\n- 这一条同样的说明在入口和分册里各写了一遍，必须一致\n",
-             {"sub/x.md": "- 这一条同样的说明在入口和分册里各写了一遍，必须一致\n"})
+        make("dup", "---\nname: s\ndescription: 用 A。\n---\n- 这一条同样的说明在入口和参考文件里各写了一遍，必须一致\n",
+             {"sub/x.md": "- 这一条同样的说明在入口和参考文件里各写了一遍，必须一致\n"})
         make("residue", "---\nname: s\ndescription: 用 A。\n---\n我们当初对比过两种方案，最终选了 A。\n")
         make("quoted", "---\nname: s\ndescription: 用 A。\n---\n反例词：`待定`、`TODO`。\n")
         make("secret", "---\nname: s\ndescription: 用 A。\n---\n见 `scripts/x.py`\n",
@@ -297,8 +297,8 @@ def self_test():
             got = 1 if results[slug] else 0
             if got != expect:
                 bad.append(f"{slug}: 期望退出码 {expect}，实际 {got}（{results[slug]}）")
-        if not any("孤儿" in e for e in results["orphan"]):
-            bad.append("orphan: 没报出孤儿分册")
+        if not any("没人引用" in e for e in results["orphan"]):
+            bad.append("orphan: 没报出没人引用的参考文件")
         if not any("残渣" in h for h in check(root / "residue" / "s")[1]):
             bad.append("residue: 没报出残渣")
         if not any("重复句" in h for h in check(root / "dup" / "s")[1]):
